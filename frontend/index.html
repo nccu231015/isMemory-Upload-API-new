@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短影音分析工具</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>短影音分析工具</h1>
+        <div class="input-form">
+            <div class="form-group">
+                <label for="video-url">影片連結：</label>
+                <input type="text" id="video-url" placeholder="請輸入YouTube Shorts、TikTok或Instagram Reels影片連結">
+            </div>
+            
+            <div class="form-group">
+                <label>來源平台：</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="platform" value="youtube" checked>
+                        YouTube Shorts
+                    </label>
+                    <label>
+                        <input type="radio" name="platform" value="tiktok">
+                        TikTok
+                    </label>
+                    <label>
+                        <input type="radio" name="platform" value="instagram">
+                        Instagram Reels
+                    </label>
+                </div>
+                
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="store-in-db" checked>
+                        保存到資料庫
+                    </label>
+                </div>
+            </div>
+            
+            <button id="submit-btn">分析影片</button>
+        </div>
+        
+        <div id="loading" class="hidden">
+            <div class="spinner"></div>
+            <p>正在分析中，請稍候...</p>
+        </div>
+        
+        <div id="results" class="hidden">
+            <h2>分析結果</h2>
+            
+            <div class="result-card">
+                <h3>影片摘要</h3>
+                <p id="summary"></p>
+            </div>
+            
+            <div class="result-section">
+                <div class="result-card">
+                    <h3>重要時間</h3>
+                    <p id="important-time">無</p>
+                </div>
+                
+                <div class="result-card">
+                    <h3>重要地點</h3>
+                    <p id="important-location">無</p>
+                </div>
+            </div>
+            
+            <div class="result-card">
+                <h3>文字內容</h3>
+                <div class="scrollable-content" id="ocr-text"></div>
+            </div>
+            
+            <div class="result-card">
+                <h3>字幕內容</h3>
+                <div class="scrollable-content" id="caption"></div>
+            </div>
+            
+            <div class="original-link">
+                <a id="original-link" href="#" target="_blank">查看原始影片</a>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+</body>
+</html>
