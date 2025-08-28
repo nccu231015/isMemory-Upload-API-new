@@ -215,7 +215,7 @@ handler = Mangum(app)
 
 if __name__ == "__main__":
     import uvicorn
-    # 確保前端目錄存在
+    # 確保前端目錄存在（僅供本地開發）
     os.makedirs("frontend", exist_ok=True)
     
     uvicorn.run(app, host="0.0.0.0", port=8000)

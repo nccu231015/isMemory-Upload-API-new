@@ -40,6 +40,9 @@ image_storage/
 *.avi
 *.mkv
 
+# 前端檔案（僅供本地開發測試）
+frontend/
+
 # 系統文件
 .DS_Store
 .idea/
