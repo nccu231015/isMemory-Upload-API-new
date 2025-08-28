@@ -27,13 +27,15 @@ def audio_to_text(video_path: str) -> str:
     with open(mp3_path, "rb") as f:
         resp = client.audio.transcriptions.create(
             model="whisper-1",
-            file=f
+            file=f,
+            response_format="text",  # 純文字格式
+            temperature=0.0  # 最穩定的輸出
         )
     
     # 清理臨時檔案
     os.remove(mp3_path)
     
-    return resp.text.strip()
+    return resp.strip()  # response_format="text"時返回字符串，不是對象
 
 def download_video(url: str, output_path: str) -> bool:
     """下載影片到指定路徑"""

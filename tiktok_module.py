@@ -21,7 +21,12 @@ def whisper_transcribe(mp4_path: str) -> str:
         )
         
         with open(m4a, "rb") as f:
-            txt = client.audio.transcriptions.create(model="whisper-1", file=f).text
+            txt = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="text",  # 純文字格式
+                temperature=0.0  # 最穩定的輸出
+            )  # response_format="text"時直接返回字符串
         
         os.remove(m4a)  # 清理暫存檔
         return txt.strip()

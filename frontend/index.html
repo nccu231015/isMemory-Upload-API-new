@@ -10,28 +10,57 @@
     <div class="container">
         <h1>短影音分析工具</h1>
         <div class="input-form">
+            <!-- 選擇分析類型 -->
             <div class="form-group">
-                <label for="video-url">影片連結：</label>
-                <input type="text" id="video-url" placeholder="請輸入YouTube Shorts、TikTok或Instagram Reels影片連結">
+                <label>選擇分析類型：</label>
+                <div class="type-selector">
+                    <button type="button" id="video-type-btn" class="type-btn active">影片分析</button>
+                    <button type="button" id="image-type-btn" class="type-btn">圖片分析</button>
+                </div>
             </div>
             
-            <div class="form-group">
-                <label>來源平台：</label>
-                <div class="radio-group">
-                    <label>
-                        <input type="radio" name="platform" value="youtube" checked>
-                        YouTube Shorts
-                    </label>
-                    <label>
-                        <input type="radio" name="platform" value="tiktok">
-                        TikTok
-                    </label>
-                    <label>
-                        <input type="radio" name="platform" value="instagram">
-                        Instagram Reels
-                    </label>
+            <!-- 影片分析區域 -->
+            <div id="video-section" class="analysis-section">
+                <div class="form-group">
+                    <label for="video-url">影片連結：</label>
+                    <input type="text" id="video-url" placeholder="請輸入YouTube Shorts、TikTok或Instagram Reels影片連結">
                 </div>
                 
+                <div class="form-group">
+                    <div class="info-text">
+                        <p>支援的影片格式：</p>
+                        <ul>
+                            <li>YouTube Shorts (例如：youtube.com/shorts/...)</li>
+                            <li>TikTok 影片 (例如：tiktok.com/@用戶/video/...)</li>
+                            <li>Instagram Reels (例如：instagram.com/reels/...)</li>
+                        </ul>
+                        <p><em>系統會自動識別影片平台，無需手動選擇</em></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 圖片分析區域 -->
+            <div id="image-section" class="analysis-section hidden">
+                <div class="form-group">
+                    <label for="image-upload">選擇圖片：</label>
+                    <div class="file-upload-area">
+                        <input type="file" id="image-upload" accept="image/*" style="display: none;">
+                        <div id="upload-area" class="upload-dropzone">
+                            <div class="upload-icon">📷</div>
+                            <p>點擊選擇圖片或拖拽圖片到此處</p>
+                            <p class="upload-hint">支援 JPG、PNG、GIF 等格式</p>
+                        </div>
+                        <div id="image-preview" class="image-preview hidden">
+                            <img id="preview-img" alt="預覽圖片">
+                            <p id="image-info"></p>
+                            <button type="button" id="remove-image" class="remove-btn">移除圖片</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 共用設置 -->
+            <div class="form-group">
                 <div class="checkbox-group">
                     <label>
                         <input type="checkbox" id="store-in-db" checked>
@@ -40,7 +69,7 @@
                 </div>
             </div>
             
-            <button id="submit-btn">分析影片</button>
+            <button id="submit-btn">開始分析</button>
         </div>
         
         <div id="loading" class="hidden">

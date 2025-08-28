@@ -1,17 +1,26 @@
-from fastapi import FastAPI, HTTPException, Form
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from mangum import Mangum
 import asyncio
 import os
 import json
-from typing import Dict
+import uuid
+import base64
+import io
+from datetime import datetime
+from typing import Dict, Optional
+from PIL import Image
 
 from youtube_module import process_youtube_short
 from tiktok_module import process_tiktok_video
 from instagram_module import process_instagram_reel
+from image_module import process_image_upload
 from ai_processor import AIProcessor
 from astra_db_handler import AstraDBHandler
+import re
+from urllib.parse import urlparse
 
 # 載入環境變數
 from dotenv import load_dotenv
@@ -19,8 +28,8 @@ load_dotenv()
 
 app = FastAPI(
     title="短影音分析API",
-    description="處理YouTube Shorts和TikTok短影音的內容分析",
-    version="1.0.0"
+    description="智能處理YouTube Shorts、TikTok和Instagram Reels短影音的內容分析，支援自動平台檢測",
+    version="2.0.0"
 )
 
 # CORS設定
@@ -38,53 +47,153 @@ ai_processor = AIProcessor()
 # 初始化AstraDB處理器
 db_handler = AstraDBHandler()
 
-# 掛載前端靜態文件
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+def detect_video_platform(url: str) -> str:
+    """
+    根據URL自動檢測影片平台
+    
+    Args:
+        url: 影片連結
+    
+    Returns:
+        str: 平台名稱 ("youtube", "tiktok", "instagram") 或 "unknown"
+    """
+    if not url or not url.strip():
+        return "unknown"
+    
+    url = url.strip().lower()
+    
+    # YouTube Shorts 檢測
+    # 支援格式：
+    # - https://www.youtube.com/shorts/xNSo6xoFsYc
+    # - https://youtube.com/shorts/xNSo6xoFsYc
+    # - https://youtu.be/xNSo6xoFsYc (可能是shorts)
+    if ('youtube.com' in url and '/shorts/' in url) or 'youtu.be' in url:
+        return "youtube"
+    
+    # TikTok 檢測
+    # 支援格式：
+    # - https://www.tiktok.com/@username/video/1234567890
+    # - https://tiktok.com/@username/video/1234567890
+    # - https://vm.tiktok.com/shortlink
+    if 'tiktok.com' in url:
+        if '/video/' in url or '@' in url or 'vm.tiktok.com' in url:
+            return "tiktok"
+    
+    # Instagram Reels 檢測
+    # 支援格式：
+    # - https://www.instagram.com/reels/DNxk7Qj5qnq/
+    # - https://instagram.com/reels/DNxk7Qj5qnq/
+    if 'instagram.com' in url and '/reels/' in url:
+        return "instagram"
+    
+    return "unknown"
+
+# 注意：Vercel部署時不支援靜態檔案掛載，僅供本地開發使用
+# app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 @app.post("/api/process")
-async def process_video(url: str = Form(...), source: str = Form(...), store_in_db: bool = Form(True)):
-    """處理短影音連結"""
-    print(f"API接收到的參數: url='{url}' (長度: {len(url) if url else 'None'}), source='{source}', store_in_db={store_in_db}")
+async def process_media(
+    url: Optional[str] = Form(None), 
+    store_in_db: bool = Form(True),
+    file: Optional[UploadFile] = File(None)
+):
+    """處理短影音連結或圖片上傳 - 自動檢測類型"""
+    print(f"API接收到的參數: url='{url}', file={file.filename if file else None}, store_in_db={store_in_db}")
     
-    if not url:
-        raise HTTPException(status_code=400, detail="請提供有效的影片連結")
-    
-    try:
-        if source.lower() == "youtube":
-            # 處理YouTube Shorts
-            result = process_youtube_short(url)
-        elif source.lower() == "tiktok":
-            # 處理TikTok影片
-            result = await process_tiktok_video(url)
-        elif source.lower() == "instagram":
-            # 處理Instagram Reels
-            result = await process_instagram_reel(url)
-        else:
-            raise HTTPException(status_code=400, detail="不支援的來源平台，請選擇YouTube、TikTok或Instagram")
+    # 判斷處理類型：有檔案就是圖片，有URL就是影片
+    if file:
+        # 圖片處理邏輯
+        print("檢測到圖片上傳，啟動圖片處理流程")
         
-        # AI處理
-        ai_result = ai_processor.process_video_text(result["ai_input"])
+        # 檢查檔案類型
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="請上傳有效的圖片檔案")
         
-        # 存儲到AstraDB (如果設置了store_in_db)
-        db_result = None
-        if store_in_db:
-            db_result = db_handler.store_video_data(ai_result, source.lower())
+        try:
+            # 讀取圖片
+            image_bytes = await file.read()
+            image = Image.open(io.BytesIO(image_bytes))
             
-        return {
-            "success": True,
-            "source": source,
-            "raw_data": result["raw_output"],
-            "analysis": ai_result,
-            "db_storage": db_result
-        }
+            # 處理圖片 - 使用圖片模組
+            result = process_image_upload(image, file.filename, f"uploaded_image_{file.filename}")
+            
+            # AI處理
+            ai_result = ai_processor.process_video_text(result["ai_input"])
+            
+            # 存儲到AstraDB (如果設置了store_in_db)
+            db_result = None
+            if store_in_db:
+                db_result = db_handler.store_video_data(ai_result, "image")
+            
+            return {
+                "success": True,
+                "source": "image",
+                "raw_data": result["raw_output"],
+                "analysis": ai_result,
+                "db_storage": db_result
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"處理圖片時發生錯誤: {str(e)}")
     
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"處理影片時發生錯誤: {str(e)}")
+    elif url:
+        # 影片處理邏輯（原有邏輯）
+        print("檢測到影片連結，啟動影片處理流程")
+        
+        if not url.strip():
+            raise HTTPException(status_code=400, detail="請提供有效的影片連結")
+        
+        # 自動檢測影片平台
+        detected_source = detect_video_platform(url)
+        print(f"自動檢測到的平台: {detected_source}")
+        
+        if detected_source == "unknown":
+            raise HTTPException(status_code=400, detail="無法識別的影片連結格式，請確認連結是否為YouTube Shorts、TikTok或Instagram Reels")
+        
+        try:
+            if detected_source == "youtube":
+                # 處理YouTube Shorts
+                result = process_youtube_short(url)
+            elif detected_source == "tiktok":
+                # 處理TikTok影片
+                result = await process_tiktok_video(url)
+            elif detected_source == "instagram":
+                # 處理Instagram Reels
+                result = await process_instagram_reel(url)
+            else:
+                raise HTTPException(status_code=400, detail=f"不支援的平台: {detected_source}")
+            
+            # AI處理
+            ai_result = ai_processor.process_video_text(result["ai_input"])
+            
+            # 存儲到AstraDB (如果設置了store_in_db)
+            db_result = None
+            if store_in_db:
+                db_result = db_handler.store_video_data(ai_result, detected_source)
+                
+            return {
+                "success": True,
+                "source": detected_source,
+                "raw_data": result["raw_output"],
+                "analysis": ai_result,
+                "db_storage": db_result
+            }
+        
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"處理影片時發生錯誤: {str(e)}")
+    
+    else:
+        raise HTTPException(status_code=400, detail="請提供影片連結或上傳圖片檔案")
 
 @app.get("/")
-async def read_index():
-    """提供前端頁面"""
-    return FileResponse('frontend/index.html')
+async def root():
+    """API根端點"""
+    return {
+        "message": "isMemory Upload API",
+        "version": "2.0.0",
+        "docs": "/docs",
+        "health": "/api/health"
+    }
 
 @app.get("/api/health")
 async def health_check():
@@ -98,35 +207,11 @@ async def health_check():
         "astra_db": db_status,
         "has_openai_key": bool(os.getenv("OPENAI_API_KEY"))
     }
-    
-@app.get("/api/search")
-async def search_videos(query: str, limit: int = 5):
-    """搜索相似影片"""
-    if not query:
-        raise HTTPException(status_code=400, detail="請提供有效的搜索查詢")
-    
-    try:
-        results = db_handler.search_similar_videos(query, limit)
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"搜索影片時發生錯誤: {str(e)}")
-        
-@app.delete("/api/records/{document_id}")
-async def delete_record(document_id: str):
-    """刪除指定ID的記錄"""
-    if not document_id:
-        raise HTTPException(status_code=400, detail="請提供有效的文檔ID")
-    
-    try:
-        result = db_handler.delete_record(document_id)
-        
-        if result["success"]:
-            return result
-        else:
-            raise HTTPException(status_code=404, detail=result.get("error", "刪除文檔失敗"))
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"刪除文檔時發生錯誤: {str(e)}")
+
+
+
+# Vercel 無伺服器函數處理器
+handler = Mangum(app)
 
 if __name__ == "__main__":
     import uvicorn

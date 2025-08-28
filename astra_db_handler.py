@@ -65,7 +65,7 @@ class AstraDBHandler:
             return False
         
     def store_video_data(self, analysis_result: Dict, source_type: str) -> Dict:
-        """將視頻分析結果存儲到AstraDB"""
+        """將視頻或圖片分析結果存儲到AstraDB"""
         if not self.collection:
             success = self.initialize_connection()
             if not success:
@@ -83,7 +83,10 @@ class AstraDBHandler:
                 combined_text += f"文字內容：{ocr_text}\n"
             
             if caption.strip():
-                combined_text += f"字幕內容：{caption}"
+                if source_type == "image":
+                    combined_text += f"圖片描述：{caption}"
+                else:
+                    combined_text += f"字幕內容：{caption}"
             
             # 生成向量
             print("正在生成向量...")
@@ -91,23 +94,47 @@ class AstraDBHandler:
             
             # 準備文檔
             document_id = str(uuid.uuid4())
-            document = {
-                "_id": document_id,
-                "$vector": embedding,
-                "text": combined_text,
-                "metadata": {
-                    "document_id": document_id,
-                    "ocr_text": ocr_text,
-                    "caption": caption,
-                    "summary": summary,
-                    "important_time": analysis_result.get("important_time", ""),
-                    "important_location": analysis_result.get("important_location", ""),
-                    "original_path": analysis_result.get("original_path", ""),
-                    "source_type": source_type,  # "youtube" 或 "tiktok"
-                    "upload_time": datetime.now().isoformat(),
-                    "content_type": "short_video",
+            
+            # 根據類型準備不同的metadata結構
+            if source_type == "image":
+                # 圖片專用欄位結構
+                filename = analysis_result.get("filename", f"image_{document_id[:8]}.jpg")
+                document = {
+                    "_id": document_id,
+                    "$vector": embedding,
+                    "text": combined_text,
+                    "metadata": {
+                        "document_id": document_id,
+                        "filename": filename,
+                        "ocr_text": ocr_text,
+                        "caption": caption,
+                        "summary": summary,
+                        "important_time": analysis_result.get("important_time", ""),
+                        "important_location": analysis_result.get("important_location", ""),
+                        "original_path": analysis_result.get("original_path", ""),
+                        "upload_time": datetime.now().isoformat(),
+                        "content_type": "image",
+                    }
                 }
-            }
+            else:
+                # 影片專用欄位結構
+                document = {
+                    "_id": document_id,
+                    "$vector": embedding,
+                    "text": combined_text,
+                    "metadata": {
+                        "document_id": document_id,
+                        "ocr_text": ocr_text,
+                        "caption": caption,
+                        "summary": summary,
+                        "important_time": analysis_result.get("important_time", ""),
+                        "important_location": analysis_result.get("important_location", ""),
+                        "original_path": analysis_result.get("original_path", ""),
+                        "source_type": source_type,  # "youtube", "tiktok", "instagram"
+                        "upload_time": datetime.now().isoformat(),
+                        "content_type": "short_video",
+                    }
+                }
             
             # 存儲到AstraDB
             print("正在存儲到AstraDB...")
@@ -150,19 +177,29 @@ class AstraDBHandler:
                 fields=["metadata"]
             )
             
-            # 處理結果
+            # 處理結果 - 根據content_type返回不同的欄位
             formatted_results = []
             for doc in results:
                 metadata = doc.get("metadata", {})
-                formatted_results.append({
+                content_type = metadata.get("content_type", "short_video")
+                
+                result_item = {
                     "document_id": metadata.get("document_id"),
                     "summary": metadata.get("summary"),
                     "important_time": metadata.get("important_time"),
                     "important_location": metadata.get("important_location"),
                     "original_path": metadata.get("original_path"),
-                    "source_type": metadata.get("source_type"),
-                    "upload_time": metadata.get("upload_time")
-                })
+                    "upload_time": metadata.get("upload_time"),
+                    "content_type": content_type
+                }
+                
+                # 根據內容類型添加特定欄位
+                if content_type == "image":
+                    result_item["filename"] = metadata.get("filename")
+                else:
+                    result_item["source_type"] = metadata.get("source_type")
+                
+                formatted_results.append(result_item)
             
             return {
                 "success": True,
