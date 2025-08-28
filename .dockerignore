@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# 環境變數和敏感資訊
+.env
+.env.*
+*.pem
+credentials.json
+
+# 影片和圖片緩存
+shorts_cache/
+tiktok_videos/
+image_storage/
+*.mp4
+*.webm
+*.avi
+*.mkv
+*.mp3
+
+# 系統文件
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 日誌
+*.log
+logs/
+
+# 資料庫
+*.sqlite3
+*.db
+
+# 前端檔案（僅供本地開發測試）
+frontend/
+
+# Vercel配置（不需要）
+vercel.json
+api/
+
+# 文檔
+README.md
+*.md
+
+# 測試和開發工具
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/

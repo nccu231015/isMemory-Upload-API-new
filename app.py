@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from mangum import Mangum
+# from mangum import Mangum  # 不需要，Cloud Run直接運行FastAPI
 import asyncio
 import os
 import json
@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Optional
 from PIL import Image
 
-from youtube_module import process_youtube_short
+from youtube_module import process_youtube_video
 from tiktok_module import process_tiktok_video
 from instagram_module import process_instagram_reel
 from image_module import process_image_upload
@@ -153,7 +153,7 @@ async def process_media(
         try:
             if detected_source == "youtube":
                 # 處理YouTube Shorts
-                result = process_youtube_short(url)
+                result = process_youtube_video(url)
             elif detected_source == "tiktok":
                 # 處理TikTok影片
                 result = await process_tiktok_video(url)
@@ -210,12 +210,10 @@ async def health_check():
 
 
 
-# Vercel 無伺服器函數處理器
-handler = Mangum(app)
+# Cloud Run不需要Mangum處理器，直接運行FastAPI
 
 if __name__ == "__main__":
     import uvicorn
-    # 確保前端目錄存在（僅供本地開發）
-    os.makedirs("frontend", exist_ok=True)
-    
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Cloud Run會自動設置PORT環境變數
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)

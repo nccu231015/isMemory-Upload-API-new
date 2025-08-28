@@ -13,8 +13,8 @@ class AstraDBHandler:
         
         # 獲取環境變數或使用傳入的參數
         self.api_endpoint = api_endpoint or os.getenv("ASTRA_DB_API_ENDPOINT")
-        self.token = token or os.getenv("ASTRA_DB_TOKEN")
-        self.collection_name = collection_name or os.getenv("ASTRA_DB_COLLECTION_NAME", "shorts_vectors")
+        self.token = token or os.getenv("ASTRA_DB_APPLICATION_TOKEN")
+        self.collection_name = collection_name or os.getenv("ASTRA_DB_COLLECTION_NAME", "image_vectors")
         
         # 初始化OpenAI嵌入模型
         self.embeddings = OpenAIEmbeddings(

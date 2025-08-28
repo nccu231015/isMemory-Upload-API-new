@@ -2,6 +2,14 @@
 
 一個智能的多媒體內容分析API，支援自動識別並處理YouTube、TikTok、Instagram影片以及圖片上傳，提供AI驅動的內容分析和向量化存儲。
 
+## 🌐 線上服務
+
+**API服務地址**: https://upload-api-354905615311.asia-east1.run.app
+
+- **主要端點**: `POST /api/process`
+- **健康檢查**: `GET /api/health`
+- **API文檔**: https://upload-api-354905615311.asia-east1.run.app/docs
+
 ## ✨ 核心功能
 
 - 🔗 **智能URL識別**：自動檢測影片平台（YouTube、TikTok、Instagram）
@@ -29,6 +37,34 @@ upload-api/
 ├── requirements.txt       # 📦 Python依賴
 └── README.md             # 📚 說明文檔
 ```
+
+## 🛠️ 技術棧
+
+### 核心框架
+- **FastAPI**: 現代Python Web框架，自動API文檔生成
+- **Uvicorn**: ASGI伺服器，高性能異步處理
+
+### AI & 機器學習
+- **OpenAI GPT-4o**: 文本分析和摘要生成
+- **OpenAI Whisper-1**: 語音轉文字服務
+- **OpenAI Vision**: 圖片內容分析
+- **OpenAI Embeddings**: 文本向量化（text-embedding-3-small）
+
+### 影片處理
+- **yt-dlp**: YouTube影片音頻下載和資訊獲取
+- **TikTokApi**: TikTok影片處理
+- **ScrapeCreators API**: Instagram內容爬取
+- **FFmpeg**: 音頻格式轉換和處理
+
+### 資料存儲
+- **AstraDB**: DataStax向量資料庫，語義搜索
+- **Cloudinary**: 雲端圖片存儲服務
+- **LangChain**: 向量化處理整合
+
+### 部署 & 容器化
+- **Docker**: 容器化部署
+- **Google Cloud Run**: 無伺服器容器平台
+- **GitHub**: 版本控制和CI/CD
 
 ## 🔌 API端點詳解
 
@@ -136,13 +172,15 @@ def detect_video_platform(url: str) -> str:
 ### 1. 影片處理模組
 
 #### YouTube模組 (`youtube_module.py`)
-- **下載策略**：多重fallback機制，確保下載成功率
-- **音頻提取**：自動轉換為MP3格式
-- **字幕處理**：支援自動生成字幕和現有字幕提取
+- **yt-dlp引擎**：使用業界最穩定的YouTube下載工具
+- **純音頻下載**：智能選擇最佳音頻格式（m4a優先）
+- **FFmpeg整合**：自動處理音頻格式轉換，確保Whisper相容性
+- **Whisper轉錄**：OpenAI Whisper-1高品質語音轉文字
 - **錯誤處理**：下載失敗時提取基本資訊
 
 #### TikTok模組 (`tiktok_module.py`)
 - **API整合**：使用TikTokApi進行數據提取
+- **Playwright v1.54.0**：最新版本瀏覽器自動化支援
 - **反爬蟲對策**：多種下載方法嘗試
 - **降級處理**：下載失敗時使用描述文字
 
@@ -255,68 +293,43 @@ frontend/                  # 可選，僅用於測試
 
 #### 方式一：雲端平台部署（推薦）
 
-**1. Vercel 部署（推薦）**
+**1. Google Cloud Run 部署（推薦）**
 
-Vercel是部署Python API的絕佳選擇，支援無伺服器函數和自動擴展。
+Google Cloud Run是部署容器化應用的最佳選擇，支援自動擴展、高可用性和長時間處理任務。
 
 **部署步驟**：
 
 ```bash
-# 1. 安裝Vercel CLI
-npm install -g vercel
+# 1. 安裝Google Cloud CLI
+# 參考：https://cloud.google.com/sdk/docs/install
 
-# 2. 登入Vercel
-vercel login
+# 2. 登入並設置專案
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
 
-# 3. 初始化項目
-vercel
-
-# 4. 設置環境變數
-vercel env add OPENAI_API_KEY
-vercel env add ASTRA_DB_APPLICATION_TOKEN
-vercel env add ASTRA_DB_API_ENDPOINT
-vercel env add CLOUDINARY_CLOUD_NAME
-vercel env add CLOUDINARY_API_KEY
-vercel env add CLOUDINARY_API_SECRET
-vercel env add MS_TOKEN
-
-# 5. 部署
-vercel --prod
+# 3. 部署到Cloud Run（一鍵部署）
+gcloud run deploy upload-api \
+  --source . \
+  --region asia-east1 \
+  --allow-unauthenticated \
+  --memory 4Gi \
+  --cpu 2 \
+  --timeout 3600 \
+  --max-instances 10 \
+  --set-env-vars="OPENAI_API_KEY=your-key,ASTRA_DB_APPLICATION_TOKEN=your-token,ASTRA_DB_API_ENDPOINT=your-endpoint,CLOUDINARY_CLOUD_NAME=your-name,CLOUDINARY_API_KEY=your-key,CLOUDINARY_API_SECRET=your-secret,X_API_KEY=your-key,MS_TOKEN=your-token,ASTRA_DB_COLLECTION_NAME=image_vectors"
 ```
 
-**Vercel配置檔案** (`vercel.json`)：
-```json
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "app.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "app.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "app.py"
-    }
-  ],
-  "functions": {
-    "app.py": {
-      "maxDuration": 60
-    }
-  }
-}
-```
+**優勢**：
+- ✅ **無時間限制**：支援長時間AI處理任務
+- ✅ **高資源配置**：4GB記憶體 + 2 CPU
+- ✅ **自動擴展**：按需求自動調整實例數量
+- ✅ **完整容器支援**：支援所有Python依賴和系統工具
+- ✅ **穩定可靠**：Google雲端基礎設施
 
-**注意事項**：
-- Vercel函數有60秒執行時間限制
-- 適合輕量級AI處理任務
-- 自動HTTPS和CDN加速
-- 支援自動擴展
+**當前線上服務**：
+- 🌐 **API地址**：https://upload-api-354905615311.asia-east1.run.app
+- 📊 **狀態**：已部署並運行中
+- 🔧 **配置**：4GB RAM, 2 CPU, 60分鐘超時
 
 **2. Railway 部署**
 ```bash
@@ -529,11 +542,17 @@ OPENAI_API_KEY=sk-your-openai-api-key
 # AstraDB
 ASTRA_DB_APPLICATION_TOKEN=AstraCS:your-token
 ASTRA_DB_API_ENDPOINT=https://your-db-id-region.apps.astra.datastax.com
+ASTRA_DB_COLLECTION_NAME=image_vectors
 
 # Cloudinary
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
+
+# YouTube處理 (yt-dlp，無需額外API金鑰)
+
+# Instagram API (必需)
+X_API_KEY=your-x-api-key
 
 # TikTok (可選)
 MS_TOKEN=your-ms-token
@@ -550,19 +569,19 @@ HOST=0.0.0.0
 - [ ] `requirements.txt` 包含所有依賴
 - [ ] 環境變數已正確設置
 - [ ] FFmpeg已安裝（音頻處理）
-- [ ] Playwright瀏覽器已安裝
 
 **部署後驗證**：
 ```bash
 # 健康檢查
-curl http://your-domain.com/api/health
+curl https://upload-api-354905615311.asia-east1.run.app/api/health
 
 # 測試影片分析
-curl -X POST "http://your-domain.com/api/process" \
-  -F "url=https://www.youtube.com/shorts/xNSo6xoFsYc"
+curl -X POST "https://upload-api-354905615311.asia-east1.run.app/api/process" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.youtube.com/shorts/xNSo6xoFsYc"}'
 
-# 檢查日誌
-tail -f /var/log/upload-api.log
+# 查看API文檔
+open https://upload-api-354905615311.asia-east1.run.app/docs
 ```
 
 ### ⚡ 性能優化建議
@@ -797,7 +816,7 @@ pm.test("Save document_id", function () {
 ### 平台限制
 - **TikTok**：受反爬蟲機制影響，部分影片可能無法下載
 - **Instagram**：需要穩定網路連接，可能受地區限制
-- **YouTube**：使用yt-dlp，支援度較高
+- **YouTube**：使用yt-dlp直接下載，穩定可靠，無API配額限制
 
 ### 性能考量
 - **並發限制**：建議設置適當的worker數量

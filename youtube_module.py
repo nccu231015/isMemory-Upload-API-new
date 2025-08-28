@@ -1,29 +1,52 @@
 import os
-from yt_dlp import YoutubeDL
+import re
 import subprocess
+import yt_dlp
 from openai import OpenAI
 from typing import Dict, Optional
 
 def audio_to_text(video_path: str) -> str:
-    """使用Whisper將視頻音頻轉為文字"""
-    base = os.path.splitext(video_path)[0]
-    mp3_path = base + "_whisper.mp3"
-    
+    """使用Whisper將音頻轉為文字 - 如果是mp4則先提取音頻"""
     try:
-        # 如果mp3檔案不存在才進行轉換
-        if not os.path.exists(mp3_path):
-            print("🎵 轉換音頻為mp3格式...")
-            # 轉換為mp3：單聲道 / 16kHz / 192kbps
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", video_path,
-                 "-vn", "-ac", "1", "-ar", "16000",
-                 "-b:a", "192k", mp3_path],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 檢查輸入檔案是否存在
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"音頻檔案不存在: {video_path}")
+        
+        file_size = os.path.getsize(video_path)
+        print(f"🎵 音頻檔案大小: {file_size / 1024 / 1024:.1f}MB")
+        
+        if file_size == 0:
+            raise Exception("音頻檔案為空")
+        
+        # 如果是mp4檔案，先用ffmpeg提取純音頻
+        audio_file_for_whisper = video_path
+        if video_path.endswith('.mp4'):
+            print("🔄 檢測到mp4檔案，提取純音頻...")
+            base = os.path.splitext(video_path)[0]
+            audio_file_for_whisper = base + "_audio.m4a"
+            
+            try:
+                result = subprocess.run([
+                    "ffmpeg", "-y", "-i", video_path,
+                    "-vn", "-acodec", "copy", 
+                    audio_file_for_whisper
+                ], capture_output=True, text=True, timeout=30)
+                
+                if result.returncode != 0:
+                    print(f"⚠️ ffmpeg提取音頻失敗，直接使用原檔案: {result.stderr}")
+                    audio_file_for_whisper = video_path
+                else:
+                    print("✅ 音頻提取成功")
+            except Exception as e:
+                print(f"⚠️ ffmpeg提取音頻失敗，直接使用原檔案: {e}")
+                audio_file_for_whisper = video_path
         
         print("🤖 使用Whisper-1進行語音轉文字...")
+        
         # 呼叫Whisper-1
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        with open(mp3_path, "rb") as f:
+        
+        with open(audio_file_for_whisper, "rb") as f:
             resp = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=f,
@@ -31,156 +54,216 @@ def audio_to_text(video_path: str) -> str:
                 temperature=0.0  # 最穩定的輸出
             )
         
-        # 清理臨時檔案
-        if os.path.exists(mp3_path):
-            os.remove(mp3_path)
+        # 清理提取的音頻檔案（如果有的話）
+        if audio_file_for_whisper != video_path and os.path.exists(audio_file_for_whisper):
+            try:
+                os.remove(audio_file_for_whisper)
+                print("🗑️ 已清理提取的音頻暫存檔")
+            except:
+                pass
         
-        return resp.strip()  # response_format="text"時返回字符串，不是對象
+        transcription = resp.strip()
+        if transcription:
+            print(f"✅ 語音轉文字成功，長度: {len(transcription)}字符")
+            return transcription
+        else:
+            print("⚠️ Whisper返回空結果")
+            return ""
+    
+    except Exception as e:
+        print(f"❌ 語音轉文字失敗: {e}")
+        return ""
+
+def is_valid_youtube_url(url: str) -> bool:
+    """檢查是否為有效的YouTube URL"""
+    patterns = [
+        r"^(https?://)?(www\.)?youtube\.com/watch\?v=[\w-]+(&\S*)?$",
+        r"^(https?://)?(www\.)?youtube\.com/shorts/[\w-]+(\?\S*)?$",
+        r"^(https?://)?(www\.)?youtu\.be/[\w-]+(\?\S*)?$"
+    ]
+    return any(re.match(pattern, url) for pattern in patterns)
+
+def extract_video_id(url: str) -> str:
+    """從YouTube URL中提取影片ID"""
+    patterns = [
+        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([\w-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+def download_youtube_audio_with_ytdlp(url: str, workdir: str = "shorts_cache") -> tuple[str, Dict]:
+    """
+    使用yt-dlp下載YouTube音頻
+    
+    Returns:
+        tuple: (audio_file_path, video_info_dict)
+    """
+    try:
+        # 確保工作目錄存在
+        os.makedirs(workdir, exist_ok=True)
+        
+        # 驗證URL
+        if not is_valid_youtube_url(url):
+            raise ValueError("無效的YouTube URL")
+        
+        print(f"🎬 正在使用yt-dlp處理YouTube影片: {url}")
+        
+        # 提取影片ID
+        video_id = extract_video_id(url)
+        if not video_id:
+            raise ValueError("無法提取影片ID")
+        
+        # yt-dlp配置 - 只下載音頻
+        ydl_opts = {
+            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'outtmpl': os.path.join(workdir, f'%(title)s_%(id)s.%(ext)s'),
+            'quiet': False,
+            'no_warnings': False,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # 首先獲取影片資訊
+            print("📋 正在獲取影片資訊...")
+            info = ydl.extract_info(url, download=False)
+            
+            title = info.get('title', '未知標題')
+            author = info.get('uploader', '未知作者')
+            description = info.get('description', '')
+            duration = info.get('duration', 0)
+            view_count = info.get('view_count', 0)
+            
+            print(f"📺 影片標題: {title}")
+            print(f"👤 作者: {author}")
+            print(f"⏱️ 長度: {duration}秒")
+            print(f"👁️ 觀看次數: {view_count}")
+            
+            # 下載音頻
+            print("⬇️ 開始下載音頻...")
+            ydl.download([url])
+            
+            # 搜索實際下載的音頻文件
+            audio_file_path = None
+            for file_path in os.listdir(workdir):
+                if video_id in file_path and (file_path.endswith('.m4a') or file_path.endswith('.webm') or file_path.endswith('.mp3') or file_path.endswith('.opus') or file_path.endswith('.mp4')):
+                    audio_file_path = os.path.join(workdir, file_path)
+                    break
+            
+            if not audio_file_path or not os.path.exists(audio_file_path):
+                raise Exception("音頻下載失敗，找不到下載的文件")
+            
+            file_size = os.path.getsize(audio_file_path)
+            print(f"✅ 音頻下載完成: {audio_file_path} ({file_size / 1024 / 1024:.1f}MB)")
+            
+            # 組織影片資訊
+            video_data = {
+                "title": title,
+                "author": author,
+                "description": description,
+                "duration": duration,
+                "view_count": view_count,
+                "video_id": video_id
+            }
+            
+            return audio_file_path, video_data
         
     except Exception as e:
-        print(f"❌ 語音轉文字失敗: {str(e)}")
-        # 清理可能存在的臨時檔案
-        if os.path.exists(mp3_path):
-            os.remove(mp3_path)
-        return "語音轉文字處理失敗"
+        error_msg = f"yt-dlp YouTube下載失敗: {str(e)}"
+        print(f"❌ {error_msg}")
+        return None, {"error": error_msg}
 
-def process_youtube_short(url: str, workdir: str = "./shorts_cache") -> Dict:
-    """處理YouTube Shorts影片"""
-    # 驗證URL
-    if not url or not url.strip() or not url.startswith(('http://', 'https://')):
-        return {
-            "raw_output": {"title": "", "description": "", "caption_txt": ""},
+def process_youtube_video(url: str) -> Dict:
+    """
+    處理YouTube影片：下載、轉錄、分析
+    
+    Returns:
+        Dict: 包含raw_output和ai_input的結果
+    """
+    try:
+        # 下載音頻
+        audio_path, video_info = download_youtube_audio_with_ytdlp(url)
+        
+        if audio_path is None:
+            # 下載失敗，返回完整格式的基本資訊
+            return {
+                "raw_output": {
+                    "description": video_info.get("error", "下載失敗"),
+                    "caption": "(影片下載失敗)",
+                    "title": "未知標題",
+                    "author": "未知作者",
+                    "view_count": 0,
+                    "duration": 0
+                },
+                "ai_input": {
+                    "original_path": url,
+                    "ocr_text": "",
+                    "caption": "(影片下載失敗)"
+                }
+            }
+        
+        # 語音轉文字
+        print("🎙️ 開始語音轉文字...")
+        caption = audio_to_text(audio_path)
+        
+        if not caption:
+            caption = "(無法轉錄音頻)"
+            print("⚠️ 語音轉文字失敗，將使用影片描述")
+        
+        # 使用影片描述作為OCR文字
+        ocr_text = video_info.get("description", "")[:500]  # 限制長度
+        
+        # 清理下載的音頻檔案
+        try:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+                print(f"🗑️ 已清理音頻檔案: {audio_path}")
+        except Exception as e:
+            print(f"⚠️ 清理檔案失敗: {e}")
+        
+        # 組合結果
+        result = {
+            "raw_output": {
+                "description": video_info.get("description", ""),
+                "caption": caption,
+                "title": video_info.get("title", ""),
+                "author": video_info.get("author", ""),
+                "view_count": video_info.get("view_count", 0),
+                "duration": video_info.get("duration", 0)
+            },
             "ai_input": {
                 "original_path": url,
-                "ocr_text": "",
-                "caption": "URL格式無效"
+                "ocr_text": ocr_text,
+                "caption": caption
             }
         }
         
-    os.makedirs(workdir, exist_ok=True)
-    
-    # 使用多種下載策略以提高成功率
-    download_strategies = [
-        # 策略1: 最佳質量
-        {
-            "format": "bestvideo+bestaudio/best",
-            "outtmpl": os.path.join(workdir, "%(title)s [%(id)s].%(ext)s"),
-            "restrictfilenames": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": ["zh-Hant", "zh-TW", "zh-Hans", "en"],
-            "quiet": True,
-        },
-        # 策略2: 任何可用格式
-        {
-            "format": "best/worst",
-            "outtmpl": os.path.join(workdir, "%(title)s [%(id)s].%(ext)s"),
-            "restrictfilenames": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": ["zh-Hant", "zh-TW", "zh-Hans", "en"],
-            "quiet": True,
-        },
-        # 策略3: 僅音頻（用於語音轉文字）
-        {
-            "format": "bestaudio/best",
-            "outtmpl": os.path.join(workdir, "%(title)s [%(id)s].%(ext)s"),
-            "restrictfilenames": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": ["zh-Hant", "zh-TW", "zh-Hans", "en"],
-            "quiet": True,
-        }
-    ]
-
-    # 嘗試多種下載策略
-    video_path = None
-    info = None
-    title = ""
-    description = ""
-    
-    for i, ydl_opts in enumerate(download_strategies):
-        try:
-            print(f"🔄 嘗試下載策略 {i+1}/3: {ydl_opts['format']}")
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-
-            video_path = ydl.prepare_filename(info)
-            title = info.get("title", "").strip()
-            description = (info.get("description") or "").strip()
-            
-            print(f"✅ 策略 {i+1} 成功下載影片: {title}")
-            break
-            
-        except Exception as e:
-            print(f"❌ 策略 {i+1} 失敗: {str(e)}")
-            if i == len(download_strategies) - 1:  # 最後一個策略也失敗
-                print("⚠️  所有下載策略失敗，嘗試僅提取影片資訊...")
-                try:
-                    with YoutubeDL({"quiet": True}) as ydl:
-                        info = ydl.extract_info(url, download=False)
-                    title = info.get("title", "").strip()
-                    description = (info.get("description") or "").strip()
-                    print(f"✅ 成功提取影片資訊: {title}")
-                    
-                    # 返回僅包含標題和描述的結果
-                    return {
-                        "raw_output": {
-                            "title": title,
-                            "description": description,
-                            "caption_txt": "無法下載影片，僅使用標題和描述資訊"
-                        },
-                        "ai_input": {
-                            "original_path": url,
-                            "ocr_text": f"{title}\n{description}",
-                            "caption": "無法下載影片，僅使用標題和描述資訊"
-                        }
-                    }
-                except Exception as e2:
-                    print(f"❌ 連資訊提取都失敗: {str(e2)}")
-                    return {
-                        "raw_output": {"title": "", "description": "", "caption_txt": ""},
-                        "ai_input": {
-                            "original_path": url,
-                            "ocr_text": "",
-                            "caption": f"處理失敗: {str(e2)}"
-                        }
-                    }
-            continue
-    
-    # 處理字幕（只有在成功下載影片時才執行）
-    if video_path and os.path.exists(video_path):
-        # 嘗試尋找字幕檔案
-        import glob
-        stem = os.path.splitext(video_path)[0]
-        subs = glob.glob(stem + ".*[vs]rt") + glob.glob(stem + "*.vtt")
+        print("✅ YouTube影片處理完成")
+        return result
         
-        if subs:
-            print(f"✅ 找到字幕檔案: {subs[0]}")
-            with open(subs[0], "r", encoding="utf-8") as f:
-                caption_txt = f.read().strip()
-        else:
-            print("⚠️  未找到字幕檔案，使用Whisper進行語音轉文字...")
-            caption_txt = audio_to_text(video_path)
-    else:
-        # 如果沒有成功下載影片，使用備用字幕
-        caption_txt = "無法下載影片進行語音轉文字"
-    
-    # 準備標準化輸出格式
-    output = {
-        "title": title,
-        "description": description,
-        "caption_txt": caption_txt
-    }
-    
-    # 轉換為AI處理需要的格式
-    ai_input = {
-        "original_path": url,
-        "ocr_text": f"{title}\n{description}",
-        "caption": caption_txt
-    }
-    
-    return {
-        "raw_output": output,
-        "ai_input": ai_input
-    }
+    except Exception as e:
+        error_msg = f"處理YouTube影片時發生錯誤: {str(e)}"
+        print(f"❌ {error_msg}")
+        
+        return {
+            "raw_output": {
+                "description": error_msg,
+                "caption": "(處理失敗)",
+                "title": "未知標題",
+                "author": "未知作者",
+                "view_count": 0,
+                "duration": 0
+            },
+            "ai_input": {
+                "original_path": url,
+                "ocr_text": "",
+                "caption": "(處理失敗)"
+            }
+        }
+
+# 測試函數
+if __name__ == "__main__":
+    test_url = "https://www.youtube.com/shorts/xNSo6xoFsYc"
+    result = process_youtube_video(test_url)
+    print("測試結果:", result)
