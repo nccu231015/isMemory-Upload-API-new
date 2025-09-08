@@ -14,13 +14,14 @@ class AIProcessor:
         caption = input_data.get("caption", "")
         
         # 準備系統提示詞
-        system_prompt = """請對提供的短影音文字內容進行五項分析，並以 JSON 格式回傳：
+        system_prompt = """請對提供的短影音文字內容進行六項分析，並以 JSON 格式回傳：
 
 1. ocr_text：保留原有的文字內容
 2. caption：保留原有的字幕內容
 3. summary：基於文字內容和字幕，生成一個簡潔有力的重點摘要（50字以內）
-4. important_time：從文字中提取任何明確提及的重要時間資訊，例如營業時間、活動日期、有效期限等。如果沒有，則回傳空字串。
-5. important_location：從文字中提取任何明確提及的重要地點資訊，例如地址、餐廳名稱、景點名稱等。如果沒有，則回傳空字串。
+4. title：生成一個吸引人的標題（20字以內），要能準確反映內容主題，適合作為影片或圖片的標題
+5. important_time：從文字中提取任何明確提及的重要時間資訊，例如營業時間、活動日期、有效期限等。如果沒有，則回傳空字串。
+6. important_location：從文字中提取任何明確提及的重要地點資訊，例如地址、餐廳名稱、景點名稱等。如果沒有，則回傳空字串。
 
 摘要應該：
 - 結合文字內容和字幕的重點資訊
@@ -28,13 +29,21 @@ class AIProcessor:
 - 用繁體中文表達
 - 適合作為短影音的標籤或分類
 
-如果內容中有著名景點、特色美食、知名建築、品牌、遊戲等內容，請在摘要中明確指出。
+標題應該：
+- 簡潔有力，20字以內
+- 準確反映內容的主要主題
+- 吸引人且易於理解
+- 用繁體中文表達
+- 適合作為影片或圖片的標題
+
+如果內容中有著名景點、特色美食、知名建築、品牌、遊戲等內容，請在摘要和標題中明確指出。
 
 請嚴格按照以下 JSON 格式回傳：
 {
     "ocr_text": "原始的文字內容，保持原始格式",
     "caption": "原始的字幕內容",
     "summary": "整合摘要，例如：星巴克咖啡店內用餐區，顧客使用筆電工作",
+    "title": "吸引人的標題，例如：星巴克咖啡店工作日常",
     "important_time": "例如：週一至週五 09:00-18:00，如果沒有則回傳空字串",
     "important_location": "例如：台北101，如果沒有則回傳空字串",
     "original_path": "保留原始連結"
@@ -75,7 +84,7 @@ class AIProcessor:
             result["original_path"] = original_path
             
             # 確保所有必要的欄位都存在
-            required_fields = ["ocr_text", "caption", "summary", "important_time", "important_location"]
+            required_fields = ["ocr_text", "caption", "summary", "title", "important_time", "important_location"]
             for field in required_fields:
                 if field not in result:
                     result[field] = ""
@@ -111,6 +120,7 @@ class AIProcessor:
                 "ocr_text": ocr_text,
                 "caption": caption,
                 "summary": "JSON解析失敗",
+                "title": "標題生成失敗",
                 "important_time": "",
                 "important_location": "",
                 "original_path": original_path
@@ -121,6 +131,7 @@ class AIProcessor:
                 "ocr_text": ocr_text,
                 "caption": caption,
                 "summary": "無法產生摘要",
+                "title": "無法產生標題",
                 "important_time": "",
                 "important_location": "",
                 "original_path": original_path

@@ -76,8 +76,9 @@ class AstraDBHandler:
             ocr_text = analysis_result.get("ocr_text", "")
             caption = analysis_result.get("caption", "")
             summary = analysis_result.get("summary", "")
+            title = analysis_result.get("title", "")
             
-            combined_text = f"摘要：{summary}\n"
+            combined_text = f"標題：{title}\n摘要：{summary}\n"
             
             if ocr_text.strip():
                 combined_text += f"文字內容：{ocr_text}\n"
@@ -106,6 +107,7 @@ class AstraDBHandler:
                     "metadata": {
                         "document_id": document_id,
                         "filename": filename,
+                        "title": title,
                         "ocr_text": ocr_text,
                         "caption": caption,
                         "summary": summary,
@@ -124,6 +126,7 @@ class AstraDBHandler:
                     "text": combined_text,
                     "metadata": {
                         "document_id": document_id,
+                        "title": title,
                         "ocr_text": ocr_text,
                         "caption": caption,
                         "summary": summary,
@@ -185,6 +188,7 @@ class AstraDBHandler:
                 
                 result_item = {
                     "document_id": metadata.get("document_id"),
+                    "title": metadata.get("title"),
                     "summary": metadata.get("summary"),
                     "important_time": metadata.get("important_time"),
                     "important_location": metadata.get("important_location"),
