@@ -15,7 +15,7 @@
 - 🔗 **智能URL識別**：自動檢測影片平台（YouTube、TikTok、Instagram）
 - 📸 **圖片上傳分析**：支援拖拽上傳，AI視覺分析
 - 🎙️ **語音轉文字**：使用OpenAI Whisper進行音頻轉錄
-- 🧠 **AI內容理解**：GPT-4o生成摘要、提取重要時間和地點
+- 🧠 **AI內容理解**：GPT-4o生成標題、摘要、提取重要時間和地點
 - 🗄️ **向量化存儲**：AstraDB向量數據庫，支援語義搜索
 - ☁️ **雲端儲存**：Cloudinary圖片存儲服務
 
@@ -142,6 +142,7 @@ def detect_video_platform(url: str) -> str:
   "message": "處理成功",
   "document_id": "uuid-string",
   "data": {
+    "title": "AI生成的吸引人標題",
     "summary": "AI生成的內容摘要",
     "important_time": "提取的重要時間",
     "important_location": "提取的重要地點",
@@ -211,6 +212,7 @@ def upload_image_to_cloudinary(image: Image.Image, filename: str = None) -> str:
 
 #### 🧠 分析能力
 - **文本清理**：移除特殊字符，防止JSON解析錯誤
+- **智能標題**：生成20字以內的吸引人標題
 - **智能摘要**：基於內容生成簡潔摘要
 - **時間提取**：識別時間相關資訊
 - **地點識別**：提取地理位置資訊
@@ -219,6 +221,7 @@ def upload_image_to_cloudinary(image: Image.Image, filename: str = None) -> str:
 #### 📊 輸出格式
 ```json
 {
+  "title": "吸引人的標題",
   "summary": "內容摘要",
   "important_time": "重要時間",
   "important_location": "重要地點"
@@ -240,6 +243,7 @@ def upload_image_to_cloudinary(image: Image.Image, filename: str = None) -> str:
   "original_path": "影片URL",
   "source_type": "youtube|tiktok|instagram",
   "content_type": "short_video",
+  "title": "AI生成標題",
   "summary": "AI摘要",
   "important_time": "時間資訊",
   "important_location": "地點資訊",
@@ -254,6 +258,7 @@ def upload_image_to_cloudinary(image: Image.Image, filename: str = None) -> str:
   "original_path": "Cloudinary URL",
   "filename": "檔案名稱",
   "content_type": "image",
+  "title": "AI生成標題",
   "summary": "AI摘要",
   "important_time": "時間資訊", 
   "important_location": "地點資訊",
