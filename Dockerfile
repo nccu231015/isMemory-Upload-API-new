@@ -22,6 +22,7 @@ COPY youtube_module.py .
 COPY tiktok_module.py .
 COPY instagram_module.py .
 COPY image_module.py .
+COPY threads_module.py .
 
 # 創建必要目錄
 RUN mkdir -p shorts_cache tiktok_videos
