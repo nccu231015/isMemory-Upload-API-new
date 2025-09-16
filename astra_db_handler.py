@@ -13,7 +13,8 @@ class AstraDBHandler:
         
         # 獲取環境變數或使用傳入的參數
         self.api_endpoint = api_endpoint or os.getenv("ASTRA_DB_API_ENDPOINT")
-        self.token = token or os.getenv("ASTRA_DB_APPLICATION_TOKEN")
+        # 同時支援兩種命名，並優先使用 ASTRA_DB_TOKEN（你指定的名稱）
+        self.token = token or os.getenv("ASTRA_DB_TOKEN") or os.getenv("ASTRA_DB_APPLICATION_TOKEN")
         self.collection_name = collection_name or os.getenv("ASTRA_DB_COLLECTION_NAME", "image_vectors")
         
         # 初始化OpenAI嵌入模型
@@ -31,6 +32,13 @@ class AstraDBHandler:
     def initialize_connection(self):
         """初始化與AstraDB的連接"""
         try:
+            # 連線前的必要參數檢查
+            if not self.api_endpoint:
+                print("初始化AstraDB連接失敗: 缺少 ASTRA_DB_API_ENDPOINT")
+                return False
+            if not self.token:
+                print("初始化AstraDB連接失敗: 缺少 ASTRA_DB_APPLICATION_TOKEN 或 ASTRA_DB_TOKEN")
+                return False
             print("正在初始化AstraDB連接...")
             
             # 創建客戶端
@@ -65,7 +73,13 @@ class AstraDBHandler:
             return False
         
     def store_video_data(self, analysis_result: Dict, source_type: str) -> Dict:
-        """將視頻或圖片分析結果存儲到AstraDB"""
+        """將視頻、圖片或文章分析結果存儲到AstraDB
+
+        source_type:
+            - image: 圖片
+            - youtube/tiktok/instagram: 短影音
+            - threads/article: 文章類（threads）
+        """
         if not self.collection:
             success = self.initialize_connection()
             if not success:
@@ -118,7 +132,7 @@ class AstraDBHandler:
                         "content_type": "image",
                     }
                 }
-            else:
+            elif source_type in ["youtube", "tiktok", "instagram"]:
                 # 影片專用欄位結構
                 document = {
                     "_id": document_id,
@@ -136,6 +150,26 @@ class AstraDBHandler:
                         "source_type": source_type,  # "youtube", "tiktok", "instagram"
                         "upload_time": datetime.now().isoformat(),
                         "content_type": "short_video",
+                    }
+                }
+            else:
+                # 文章（threads）欄位結構
+                document = {
+                    "_id": document_id,
+                    "$vector": embedding,
+                    "text": combined_text,
+                    "metadata": {
+                        "document_id": document_id,
+                        "title": title,
+                        "ocr_text": ocr_text,
+                        "caption": caption,
+                        "summary": summary,
+                        "important_time": analysis_result.get("important_time", ""),
+                        "important_location": analysis_result.get("important_location", ""),
+                        "original_path": analysis_result.get("original_path", ""),
+                        "source_type": source_type,  # threads/article
+                        "upload_time": datetime.now().isoformat(),
+                        "content_type": "article",
                     }
                 }
             

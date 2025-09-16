@@ -4,6 +4,7 @@ from TikTokApi import TikTokApi
 import ffmpeg
 from openai import OpenAI
 from typing import Dict, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 def whisper_transcribe(mp4_path: str) -> str:
     """使用Whisper-1將影片音頻轉為文字"""
@@ -39,6 +40,23 @@ async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Di
     """處理TikTok影片，提取說明和字幕"""
     print(f"TikTok模組接收到的URL: '{url}'")
     
+    # 標準化URL：移除 query 與 fragment，僅保留 scheme://host/path
+    def normalize_tiktok_url(input_url: str) -> str:
+        try:
+            parts = urlsplit(input_url)
+            # 僅保留 scheme、netloc、path；清空 query 與 fragment
+            normalized = urlunsplit((parts.scheme or 'https', parts.netloc, parts.path, '', ''))
+            # 去除 path 尾端多餘的斜線（保持 /@user/video/<id> 形式）
+            if normalized.endswith('/'):
+                normalized = normalized[:-1]
+            return normalized
+        except Exception:
+            return input_url
+    
+    cleaned_url = normalize_tiktok_url(url)
+    if cleaned_url != url:
+        print(f"標準化後的URL: '{cleaned_url}'")
+    
     # 驗證URL
     if not url or not url.strip() or not url.startswith(('http://', 'https://')):
         return {
@@ -50,12 +68,12 @@ async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Di
             }
         }
     
-    # 檢查是否是TikTok視頻URL
-    if '/video/' not in url and '@' not in url:
+    # 檢查是否是TikTok視頻URL（使用標準化後的cleaned_url）
+    if '/video/' not in cleaned_url and '@' not in cleaned_url:
         return {
             "raw_output": {"description": "", "caption": ""},
             "ai_input": {
-                "original_path": url,
+                "original_path": cleaned_url,
                 "ocr_text": "",
                 "caption": "請提供有效的TikTok影片連結"
             }
@@ -102,8 +120,8 @@ async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Di
             }
         
         # 獲取影片資訊
-        print(f"正在調用TikTokApi.video()，URL: '{url}'")
-        video = api.video(url=url)
+        print(f"正在調用TikTokApi.video()，URL: '{cleaned_url}'")
+        video = api.video(url=cleaned_url)
         print(f"TikTokApi.video()成功，正在獲取影片資訊...")
         video_data = await video.info()
         print(f"成功獲取影片資訊")
@@ -126,31 +144,44 @@ async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Di
                     if not os.path.exists(video_path):
                         print("正在下載影片...")
                         
-                        # 嘗試下載影片
+                        # 最多重試3次（每次內部嘗試不同下載方法）
                         video_bytes = None
-                        for method in ['no_wm=True', 'no_wm=False', 'default']:
-                            try:
-                                print(f"嘗試下載方法: {method}")
-                                if method == 'no_wm=True':
-                                    video_bytes = await video.bytes(no_wm=True)
-                                elif method == 'no_wm=False':
-                                    video_bytes = await video.bytes(no_wm=False)
-                                else:
-                                    video_bytes = await video.bytes()
-                                
-                                if video_bytes and len(video_bytes) > 0:
-                                    print(f"下載成功，方法: {method}")
-                                    break
-                            except Exception as e:
-                                print(f"方法 {method} 失敗: {e}")
-                                continue
+                        max_attempts = 3
+                        for attempt in range(1, max_attempts + 1):
+                            print(f"下載嘗試 {attempt}/{max_attempts} ...")
+                            try_methods = ['no_wm=True', 'no_wm=False', 'default']
+                            for method in try_methods:
+                                try:
+                                    print(f"嘗試下載方法: {method}")
+                                    if method == 'no_wm=True':
+                                        video_bytes = await video.bytes(no_wm=True)
+                                    elif method == 'no_wm=False':
+                                        video_bytes = await video.bytes(no_wm=False)
+                                    else:
+                                        video_bytes = await video.bytes()
+                                    
+                                    if video_bytes and len(video_bytes) > 0:
+                                        print(f"下載成功，方法: {method}")
+                                        break
+                                except Exception as e:
+                                    print(f"方法 {method} 失敗: {e}")
+                                    continue
+                            
+                            if video_bytes and len(video_bytes) > 0:
+                                break
+                            else:
+                                print("本次嘗試未獲得內容，稍候重試...")
+                                try:
+                                    await asyncio.sleep(2)
+                                except Exception:
+                                    pass
                         
                         if video_bytes and len(video_bytes) > 0:
                             with open(video_path, "wb") as f:
                                 f.write(video_bytes)
                             print(f"影片已下載至: {video_path}")
                         else:
-                            print("所有下載方法都失敗，跳過轉錄")
+                            print("所有重試與下載方法皆失敗，跳過轉錄")
                             caption = "(無法下載影片進行轉錄)"
                     
                     # 如果有影片檔案，進行轉錄
@@ -174,7 +205,7 @@ async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Di
         }
         
         ai_input = {
-            "original_path": url,
+            "original_path": cleaned_url,
             "ocr_text": description,
             "caption": caption
         }
