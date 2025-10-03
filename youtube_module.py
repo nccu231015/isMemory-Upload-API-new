@@ -110,6 +110,24 @@ def download_youtube_audio_with_ytdlp(url: str, workdir: str = "shorts_cache") -
             raise ValueError("無效的YouTube URL")
         
         print(f"🎬 正在使用yt-dlp處理YouTube影片: {url}")
+
+        # 可選：代理與Cookies支援（透過環境變數）
+        proxy = os.getenv("YTDLP_PROXY")  # 例如：http://user:pass@host:port 或 socks5://host:port
+        cookies_file = os.getenv("YTDLP_COOKIES_FILE")
+        cookies_inline = os.getenv("YTDLP_COOKIES")  # cookies.txt 內容字串
+
+        # 若提供了文字形式的 cookies，寫入臨時檔供 yt-dlp 使用
+        temp_cookie_path = None
+        if not cookies_file and cookies_inline:
+            try:
+                os.makedirs(workdir, exist_ok=True)
+                temp_cookie_path = os.path.join(workdir, "yt_cookies.txt")
+                with open(temp_cookie_path, "w", encoding="utf-8") as f:
+                    f.write(cookies_inline)
+                cookies_file = temp_cookie_path
+                print(f"✅ 已從環境變數寫入 cookies 至: {temp_cookie_path}")
+            except Exception as e:
+                print(f"⚠️ 無法寫入臨時 cookies 檔案: {e}")
         
         # 提取影片ID
         video_id = extract_video_id(url)
@@ -123,6 +141,14 @@ def download_youtube_audio_with_ytdlp(url: str, workdir: str = "shorts_cache") -
             'quiet': False,
             'no_warnings': False,
         }
+
+        # 套用代理與cookies（若有）
+        if proxy:
+            ydl_opts['proxy'] = proxy
+            print(f"🔌 使用代理: {proxy}")
+        if cookies_file:
+            ydl_opts['cookiefile'] = cookies_file
+            print(f"🍪 使用cookies檔案: {cookies_file}")
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # 首先獲取影片資訊

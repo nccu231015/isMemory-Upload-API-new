@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-# from mangum import Mangum  # 不需要，Cloud Run直接運行FastAPI
+
 import asyncio
 import os
 import json
@@ -18,6 +18,7 @@ from tiktok_module import process_tiktok_video
 from instagram_module import process_instagram_reel
 from image_module import process_image_upload
 from threads_module import process_threads_article
+from medium_module import process_medium_article
 from ai_processor import AIProcessor
 from astra_db_handler import AstraDBHandler
 import re
@@ -29,8 +30,8 @@ load_dotenv()
 
 app = FastAPI(
     title="短影音分析API",
-    description="智能處理YouTube Shorts、TikTok、Instagram Reels與Threads文章的內容分析，支援自動平台檢測",
-    version="2.0.0"
+    description="智能處理YouTube Shorts、TikTok、Instagram Reels、Threads文章與Medium文章的內容分析，支援自動平台檢測",
+    version="2.1.0"
 )
 
 # CORS設定
@@ -56,7 +57,7 @@ def detect_video_platform(url: str) -> str:
         url: 影片連結
     
     Returns:
-        str: 平台名稱 ("youtube", "tiktok", "instagram", "threads") 或 "unknown"
+        str: 平台名稱 ("youtube", "tiktok", "instagram", "threads", "medium") 或 "unknown"
     """
     if not url or not url.strip():
         return "unknown"
@@ -90,6 +91,13 @@ def detect_video_platform(url: str) -> str:
     # Threads 檢測（文章）
     if 'threads.net' in url or 'threads.com' in url:
         return "threads"
+    
+    # Medium 檢測（文章）
+    # 支援格式：
+    # - https://medium.com/@username/article-title-123abc
+    # - https://subdomain.medium.com/article-title-123abc
+    if 'medium.com' in url:
+        return "medium"
     
     return "unknown"
 
@@ -153,7 +161,7 @@ async def process_media(
         print(f"自動檢測到的平台: {detected_source}")
         
         if detected_source == "unknown":
-            raise HTTPException(status_code=400, detail="無法識別的連結格式，請確認連結是否為YouTube Shorts、TikTok、Instagram Reels 或 Threads")
+            raise HTTPException(status_code=400, detail="無法識別的連結格式，請確認連結是否為YouTube Shorts、TikTok、Instagram Reels、Threads 或 Medium")
         
         try:
             if detected_source == "youtube":
@@ -165,6 +173,9 @@ async def process_media(
             elif detected_source == "threads":
                 # 處理Threads文章
                 result = await process_threads_article(url)
+            elif detected_source == "medium":
+                # 處理Medium文章
+                result = await process_medium_article(url)
             else:
                 raise HTTPException(status_code=400, detail=f"不支援的平台: {detected_source}")
             
@@ -174,8 +185,8 @@ async def process_media(
             # 存儲到AstraDB (如果設置了store_in_db)
             db_result = None
             if store_in_db:
-                # Threads 視為 article 類型
-                store_type = "article" if detected_source == "threads" else detected_source
+                # Threads 和 Medium 視為 article 類型
+                store_type = "article" if detected_source in ["threads", "medium"] else detected_source
                 db_result = db_handler.store_video_data(ai_result, store_type)
                 
             return {
@@ -222,12 +233,42 @@ async def process_threads(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"處理Threads文章時發生錯誤: {str(e)}")
 
+@app.post("/api/process/medium")
+async def process_medium(
+    url: str = Form(...),
+    store_in_db: bool = Form(True)
+):
+    """處理 Medium 文章連結（專用端點）"""
+    if not url or not url.strip():
+        raise HTTPException(status_code=400, detail="請提供有效的Medium連結")
+    try:
+        # 直接呼叫 Medium 模組
+        result = await process_medium_article(url)
+
+        # AI處理
+        ai_result = ai_processor.process_video_text(result["ai_input"])
+
+        # 存儲到AstraDB
+        db_result = None
+        if store_in_db:
+            db_result = db_handler.store_video_data(ai_result, "article")
+
+        return {
+            "success": True,
+            "source": "medium",
+            "raw_data": result["raw_output"],
+            "analysis": ai_result,
+            "db_storage": db_result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"處理Medium文章時發生錯誤: {str(e)}")
+
 @app.get("/")
 async def root():
     """API根端點"""
     return {
         "message": "isMemory Upload API",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "docs": "/docs",
         "health": "/api/health"
     }
