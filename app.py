@@ -31,7 +31,7 @@ load_dotenv()
 app = FastAPI(
     title="短影音分析API",
     description="智能處理YouTube Shorts、TikTok、Instagram Reels、Threads文章與Medium文章的內容分析，支援自動平台檢測",
-    version="2.1.0"
+    version="2.2.0"
 )
 
 # CORS設定
@@ -83,9 +83,11 @@ def detect_video_platform(url: str) -> str:
     
     # Instagram Reels 檢測
     # 支援格式：
+    # - https://www.instagram.com/reel/DOw9J9kEtY7/
     # - https://www.instagram.com/reels/DNxk7Qj5qnq/
+    # - https://instagram.com/reel/DOw9J9kEtY7/
     # - https://instagram.com/reels/DNxk7Qj5qnq/
-    if 'instagram.com' in url and '/reels/' in url:
+    if 'instagram.com' in url and ('/reels/' in url or '/reel/' in url):
         return "instagram"
     
     # Threads 檢測（文章）
@@ -108,10 +110,11 @@ def detect_video_platform(url: str) -> str:
 async def process_media(
     url: Optional[str] = Form(None), 
     store_in_db: bool = Form(True),
-    file: Optional[UploadFile] = File(None)
+    file: Optional[UploadFile] = File(None),
+    user_id: Optional[str] = Form(None)
 ):
     """處理短影音連結、Threads 文章或圖片上傳 - 自動檢測類型"""
-    print(f"API接收到的參數: url='{url}', file={file.filename if file else None}, store_in_db={store_in_db}")
+    print(f"API接收到的參數: url='{url}', file={file.filename if file else None}, store_in_db={store_in_db}, user_id='{user_id}'")
     
     # 判斷處理類型：有檔案就是圖片，有URL就是影片
     if file:
@@ -136,7 +139,7 @@ async def process_media(
             # 存儲到AstraDB (如果設置了store_in_db)
             db_result = None
             if store_in_db:
-                db_result = db_handler.store_video_data(ai_result, "image")
+                db_result = db_handler.store_video_data(ai_result, "image", user_id)
             
             return {
                 "success": True,
@@ -187,7 +190,7 @@ async def process_media(
             if store_in_db:
                 # Threads 和 Medium 視為 article 類型
                 store_type = "article" if detected_source in ["threads", "medium"] else detected_source
-                db_result = db_handler.store_video_data(ai_result, store_type)
+                db_result = db_handler.store_video_data(ai_result, store_type, user_id)
                 
             return {
                 "success": True,
@@ -206,7 +209,8 @@ async def process_media(
 @app.post("/api/process/threads")
 async def process_threads(
     url: str = Form(...),
-    store_in_db: bool = Form(True)
+    store_in_db: bool = Form(True),
+    user_id: Optional[str] = Form(None)
 ):
     """處理 Threads 文章連結（專用端點）"""
     if not url or not url.strip():
@@ -221,7 +225,7 @@ async def process_threads(
         # 存儲到AstraDB
         db_result = None
         if store_in_db:
-            db_result = db_handler.store_video_data(ai_result, "article")
+            db_result = db_handler.store_video_data(ai_result, "article", user_id)
 
         return {
             "success": True,
@@ -236,7 +240,8 @@ async def process_threads(
 @app.post("/api/process/medium")
 async def process_medium(
     url: str = Form(...),
-    store_in_db: bool = Form(True)
+    store_in_db: bool = Form(True),
+    user_id: Optional[str] = Form(None)
 ):
     """處理 Medium 文章連結（專用端點）"""
     if not url or not url.strip():
@@ -251,7 +256,7 @@ async def process_medium(
         # 存儲到AstraDB
         db_result = None
         if store_in_db:
-            db_result = db_handler.store_video_data(ai_result, "article")
+            db_result = db_handler.store_video_data(ai_result, "article", user_id)
 
         return {
             "success": True,
@@ -268,7 +273,7 @@ async def root():
     """API根端點"""
     return {
         "message": "isMemory Upload API",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "docs": "/docs",
         "health": "/api/health"
     }

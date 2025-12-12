@@ -72,13 +72,16 @@ class AstraDBHandler:
             print(f"初始化AstraDB連接失敗: {str(e)}")
             return False
         
-    def store_video_data(self, analysis_result: Dict, source_type: str) -> Dict:
+    def store_video_data(self, analysis_result: Dict, source_type: str, user_id: str = None) -> Dict:
         """將視頻、圖片或文章分析結果存儲到AstraDB
 
-        source_type:
-            - image: 圖片
-            - youtube/tiktok/instagram: 短影音
-            - threads/article: 文章類（threads）
+        Args:
+            analysis_result: AI 分析結果
+            source_type: 來源類型
+                - image: 圖片
+                - youtube/tiktok/instagram: 短影音
+                - threads/article: 文章類（threads、medium）
+            user_id: 使用者 ID（可選）
         """
         if not self.collection:
             success = self.initialize_connection()
@@ -120,6 +123,7 @@ class AstraDBHandler:
                     "text": combined_text,
                     "metadata": {
                         "document_id": document_id,
+                        "user_id": user_id,
                         "filename": filename,
                         "title": title,
                         "ocr_text": ocr_text,
@@ -140,6 +144,7 @@ class AstraDBHandler:
                     "text": combined_text,
                     "metadata": {
                         "document_id": document_id,
+                        "user_id": user_id,
                         "title": title,
                         "ocr_text": ocr_text,
                         "caption": caption,
@@ -153,13 +158,14 @@ class AstraDBHandler:
                     }
                 }
             else:
-                # 文章（threads）欄位結構
+                # 文章（threads、medium）欄位結構
                 document = {
                     "_id": document_id,
                     "$vector": embedding,
                     "text": combined_text,
                     "metadata": {
                         "document_id": document_id,
+                        "user_id": user_id,
                         "title": title,
                         "ocr_text": ocr_text,
                         "caption": caption,
@@ -222,6 +228,7 @@ class AstraDBHandler:
                 
                 result_item = {
                     "document_id": metadata.get("document_id"),
+                    "user_id": metadata.get("user_id"),
                     "title": metadata.get("title"),
                     "summary": metadata.get("summary"),
                     "important_time": metadata.get("important_time"),
