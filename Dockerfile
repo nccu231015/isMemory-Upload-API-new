@@ -1,5 +1,5 @@
 # 使用包含Playwright依賴的基礎映像
-FROM mcr.microsoft.com/playwright/python:v1.55.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.57.0-jammy
 
 # 安裝額外的系統依賴
 RUN apt-get update && apt-get install -y \
