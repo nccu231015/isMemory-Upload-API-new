@@ -31,6 +31,13 @@ var/
 *.pem
 credentials.json
 
+# YouTube 認證相關（包含敏感資訊）
+youtube_cookies.txt
+export_youtube_cookies.py
+get_oauth2_token.py
+YOUTUBE_OAUTH2_SETUP.md
+YOUTUBE_COOKIES_DEPLOY.md
+
 # 影片和圖片緩存
 shorts_cache/
 tiktok_videos/

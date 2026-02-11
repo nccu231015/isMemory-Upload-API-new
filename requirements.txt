@@ -10,7 +10,7 @@ cloudinary>=1.36.0
 Pillow>=9.0.0
 
 # 影片處理
-yt-dlp # Currently used for YouTube audio download
+yt-dlp  # Latest version with OAuth2 support for YouTube authentication
 TikTokApi>=7.0.0
 ffmpeg-python>=0.2.0
 
