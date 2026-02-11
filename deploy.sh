@@ -5,14 +5,14 @@
 
 set -e
 
-# 檢查是否提供了PROJECT_ID
-if [ -z "$1" ]; then
-    echo "使用方法: ./deploy.sh [PROJECT_ID]"
-    echo "例如: ./deploy.sh my-project-123"
-    exit 1
+# 載入 .env 檔案中的環境變數（如果存在）
+if [ -f ".env" ]; then
+    echo "📋 載入 .env 檔案..."
+    export $(grep -v '^#' .env | xargs)
 fi
 
-PROJECT_ID=$1
+# 設置 PROJECT_ID，預設為 crm-llm-api-463205
+PROJECT_ID=${1:-"crm-llm-api-463205"}
 SERVICE_NAME="upload-api"
 REGION="asia-east1"
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
@@ -35,7 +35,7 @@ gcloud services enable containerregistry.googleapis.com
 
 # 3. 構建Docker映像
 echo "🏗️ 構建 Docker 映像..."
-docker build -t $IMAGE_NAME .
+docker build --platform linux/amd64 -t $IMAGE_NAME .
 
 # 4. 推送映像到Google Container Registry
 echo "📤 推送映像到 Container Registry..."
@@ -66,3 +66,5 @@ echo ""
 echo "💡 測試API:"
 echo "curl $SERVICE_URL/api/health"
 echo ""
+
+
