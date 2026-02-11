@@ -131,6 +131,7 @@ def download_youtube_audio_with_ytdlp(
 
         # 認證設定
         proxy = os.getenv("YTDLP_PROXY")  # 例如：http://user:pass@host:port
+        cookies_env = os.getenv("YTDLP_COOKIES")  # 從環境變數讀取 cookies（雲端部署用）
 
         # 提取影片ID
         video_id = extract_video_id(url)
@@ -145,17 +146,30 @@ def download_youtube_audio_with_ytdlp(
             "no_warnings": False,
         }
 
-        # 使用專案目錄中的 youtube_cookies.txt
-        # 取得當前腳本所在目錄
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        cookies_file = os.path.join(script_dir, "youtube_cookies.txt")
+        # 認證處理：優先環境變數（雲端），其次本機檔案
+        temp_cookies_file = None
 
-        if os.path.exists(cookies_file):
-            ydl_opts["cookiefile"] = cookies_file
-            print(f"🍪 使用 cookies 檔案: {cookies_file}")
+        if cookies_env:
+            # 雲端部署：從環境變數建立臨時 cookies 檔案
+            try:
+                temp_cookies_file = os.path.join(workdir, "yt_cookies_temp.txt")
+                with open(temp_cookies_file, "w", encoding="utf-8") as f:
+                    f.write(cookies_env)
+                ydl_opts["cookiefile"] = temp_cookies_file
+                print("🍪 使用環境變數提供的 cookies")
+            except Exception as e:
+                print(f"⚠️ 無法寫入臨時 cookies 檔案: {e}")
         else:
-            print(f"⚠️ 找不到 cookies 檔案: {cookies_file}")
-            print("⚠️ 將嘗試不使用認證下載（可能會失敗）")
+            # 本機開發：使用專案目錄中的 youtube_cookies.txt
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            cookies_file = os.path.join(script_dir, "youtube_cookies.txt")
+
+            if os.path.exists(cookies_file):
+                ydl_opts["cookiefile"] = cookies_file
+                print(f"🍪 使用本機 cookies 檔案: {cookies_file}")
+            else:
+                print(f"⚠️ 找不到 cookies 檔案: {cookies_file}")
+                print("⚠️ 將嘗試不使用認證下載（可能會失敗）")
 
         # 套用代理（若有）
         if proxy:
