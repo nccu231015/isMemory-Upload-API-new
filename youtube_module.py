@@ -244,10 +244,10 @@ def process_youtube_video(url: str) -> Dict:
 
         if not caption:
             caption = "(無法轉錄音頻)"
-            print("⚠️ 語音轉文字失敗，將使用影片描述")
+            print("⚠️ 語音轉文字失敗")
 
-        # 使用影片描述作為OCR文字
-        ocr_text = video_info.get("description", "")[:500]  # 限制長度
+        # 不使用影片描述作為OCR文字，因通常包含非重點資訊
+        ocr_text = ""
 
         # 清理下載的音頻檔案
         try:

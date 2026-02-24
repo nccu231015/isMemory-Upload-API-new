@@ -11,8 +11,6 @@ Pillow>=9.0.0
 
 # 影片處理
 yt-dlp  # Latest version with OAuth2 support for YouTube authentication
-TikTokApi>=7.0.0
-ffmpeg-python>=0.2.0
 
 # 資料庫
 astrapy>=0.5.0
@@ -21,8 +19,3 @@ langchain-openai>=0.1.0
 # 工具包
 python-dotenv>=1.0.0
 nest_asyncio>=1.5.6
-parsel>=1.9.0
-jmespath>=1.0.1
-nested-lookup>=0.2.25
-playwright>=1.47.0
-tavily-python>=0.3.0
