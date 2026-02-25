@@ -8,9 +8,7 @@
 
 | 方法 | 路徑 | 用途 |
 |---|---|---|
-| `POST` | `/api/process` | **通用端點**：自動判斷平台，支援 URL 或圖片上傳 |
-| `POST` | `/api/process/threads` | Threads 專用（與通用端點功能相同，明確指定） |
-| `POST` | `/api/process/medium` | Medium 專用（與通用端點功能相同，明確指定） |
+| `POST` | `/api/process` | **通用端點**：自動判斷平台，支援所有 URL 或圖片上傳 |
 | `GET` | `/api/health` | 健康檢查，回傳服務狀態 |
 | `GET` | `/` | 根端點，回傳 API 基本資訊 |
 
@@ -63,37 +61,6 @@
 }
 ```
 
----
-
-## POST `/api/process/threads` — Threads 專用端點
-
-請求格式：`multipart/form-data`
-
-### 請求參數
-
-| 欄位 | 類型 | 必要 | 說明 |
-|---|---|---|---|
-| `url` | `string` | ✅ | Threads 貼文連結 |
-| `store_in_db` | `bool` | 否，預設 `true` | 是否寫入 AstraDB |
-| `user_id` | `string` | 否 | 使用者識別碼 |
-
-> **與通用端點的差異**：直接呼叫 Threads 模組，不經過平台自動判斷，`url` 為必填欄位。
-
----
-
-## POST `/api/process/medium` — Medium 專用端點
-
-請求格式：`multipart/form-data`
-
-### 請求參數
-
-| 欄位 | 類型 | 必要 | 說明 |
-|---|---|---|---|
-| `url` | `string` | ✅ | Medium 文章連結 |
-| `store_in_db` | `bool` | 否，預設 `true` | 是否寫入 AstraDB |
-| `user_id` | `string` | 否 | 使用者識別碼 |
-
-> **與通用端點的差異**：直接呼叫 Medium 模組，不經過平台自動判斷，`url` 為必填欄位。
 
 ---
 
@@ -242,23 +209,13 @@ curl -X POST http://localhost:8080/api/process \
   -F "url=https://www.instagram.com/reel/ABC123/" \
   -F "store_in_db=false"
 
-# Threads（通用端點，自動判斷）
+# Threads
 curl -X POST http://localhost:8080/api/process \
   -F "url=https://www.threads.net/@username/post/ABCDEFG" \
   -F "store_in_db=false"
 
-# Threads（專用端點）
-curl -X POST http://localhost:8080/api/process/threads \
-  -F "url=https://www.threads.net/@username/post/ABCDEFG" \
-  -F "store_in_db=false"
-
-# Medium（通用端點，自動判斷）
+# Medium
 curl -X POST http://localhost:8080/api/process \
-  -F "url=https://medium.com/@username/article-123abc" \
-  -F "store_in_db=false"
-
-# Medium（專用端點）
-curl -X POST http://localhost:8080/api/process/medium \
   -F "url=https://medium.com/@username/article-123abc" \
   -F "store_in_db=false"
 
