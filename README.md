@@ -53,6 +53,7 @@
     "summary": "AI 生成摘要",
     "important_time": "抽取的重要時間",
     "important_location": "抽取的重要地點",
+    "address": "解析出的絕對位置（若為空，則表示無法解析實體地址）",
     "original_path": "原始 URL"
   },
   "db_storage": {
@@ -175,7 +176,8 @@ docker-compose up -d --build
 
 | 變數 | 必要 | 說明 |
 |---|---|---|
-| `OPENAI_API_KEY` | ✅ | OpenAI API 金鑰（Whisper + GPT-4o） |
+| `OPENAI_API_KEY` | ✅ | OpenAI API 金鑰（Whisper + GPT-5-nano） |
+| `GOOGLE_MAPS_API_KEY` | ✅ | Google Maps Places API 金鑰（用於地點轉換為地址） |
 | `ASTRA_DB_API_ENDPOINT` | ✅ | AstraDB 端點 |
 | `ASTRA_DB_TOKEN` | ✅ | AstraDB Token（優先） |
 | `ASTRA_DB_APPLICATION_TOKEN` | 備選 | 與 `ASTRA_DB_TOKEN` 擇一 |
@@ -249,7 +251,8 @@ curl http://localhost:8080/api/health
 | `title` | AI 生成標題 |
 | `summary` | AI 生成摘要 |
 | `important_time` | AI 抽取的重要時間 |
-| `important_location` | AI 抽取的重要地點 |
+| `important_location` | AI 抽取的重要地點（地名） |
+| `address` | Google Maps API 解析出的絕對地址 |
 | `original_path` | 原始 URL 或檔名 |
 | `upload_time` | 上傳時間（ISO 8601） |
 | `source_type` | 平台名稱（short_video / article 類型才有） |
@@ -259,6 +262,10 @@ curl http://localhost:8080/api/health
 ---
 
 ## 更新紀錄
+
+### v2.5.0
+- AI 分析模型升級為 `gpt-5-nano`。
+- 新增 `address` 欄位：從 `important_location` 提取後呼叫 Google Maps Places API 轉為絕對地址，並存入 Astra DB。
 
 ### v2.4.0
 - TikTok 模組改用 `douyin.wtf` Hybrid API，移除 TikTokApi / Playwright 依賴
