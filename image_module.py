@@ -84,7 +84,7 @@ def process_image_upload(
 
         print("正在調用 OpenAI GPT-4o 進行圖片分析...")
         response = client.chat.completions.create(
-            model="gpt-5-nano",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "user",
@@ -120,7 +120,8 @@ def process_image_upload(
                     ],
                 }
             ],
-            max_completion_tokens=4096,  # gpt-5-nano
+            max_tokens=4096,
+            temperature=0.3,
             response_format={"type": "json_object"},
         )
 

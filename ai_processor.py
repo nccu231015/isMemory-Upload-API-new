@@ -115,7 +115,7 @@ class AIProcessor:
 
             # 呼叫LLM進行處理
             response = self.client.chat.completions.create(
-                model="gpt-5-nano",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {
@@ -123,7 +123,8 @@ class AIProcessor:
                         "content": f"文字內容：{clean_ocr_text}\n\n字幕內容：{clean_caption}\n\n原始連結：{original_path}",
                     },
                 ],
-                max_completion_tokens=4096,  # gpt-5-nano
+                max_tokens=4096,
+                temperature=0.3,
                 response_format={"type": "json_object"},
             )
 
