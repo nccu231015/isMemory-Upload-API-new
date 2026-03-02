@@ -246,8 +246,10 @@ def process_youtube_video(url: str) -> Dict:
             caption = "(無法轉錄音頻)"
             print("⚠️ 語音轉文字失敗")
 
-        # 不使用影片描述作為OCR文字，因通常包含非重點資訊
-        ocr_text = ""
+        # 使用影片標題作為 ocr_text（作者濃縮的核心文案，資訊密度高）
+        # 不使用 description，因通常包含非重點資訊
+        video_title = video_info.get("title", "")
+        ocr_text = video_title
 
         # 清理下載的音頻檔案
         try:
@@ -262,15 +264,15 @@ def process_youtube_video(url: str) -> Dict:
             "raw_output": {
                 "description": video_info.get("description", ""),
                 "caption": caption,
-                "title": video_info.get("title", ""),
+                "title": video_title,
                 "author": video_info.get("author", ""),
                 "view_count": video_info.get("view_count", 0),
                 "duration": video_info.get("duration", 0),
             },
             "ai_input": {
                 "original_path": url,
-                "ocr_text": ocr_text,
-                "caption": caption,
+                "ocr_text": ocr_text,  # 影片標題（作者核心文案）
+                "caption": caption,  # Whisper 語音轉文字
             },
         }
 
