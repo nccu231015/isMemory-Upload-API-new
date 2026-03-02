@@ -120,7 +120,7 @@ def process_image_upload(
                     ],
                 }
             ],
-            max_tokens=4096,  # OpenAI gpt-5-nano 最大輸出token限制
+            max_completion_tokens=4096,  # gpt-5-nano
             temperature=0.3,
             response_format={"type": "json_object"},
         )

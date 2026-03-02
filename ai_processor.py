@@ -123,7 +123,7 @@ class AIProcessor:
                         "content": f"文字內容：{clean_ocr_text}\n\n字幕內容：{clean_caption}\n\n原始連結：{original_path}",
                     },
                 ],
-                max_tokens=4096,  # OpenAI gpt-4o 最大輸出token限制
+                max_completion_tokens=4096,  # gpt-5-nano
                 temperature=0.3,
                 response_format={"type": "json_object"},
             )
