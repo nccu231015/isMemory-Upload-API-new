@@ -157,8 +157,9 @@ class AIProcessor:
                     result[field] = ""
 
             # 處理 Google Maps 詳細資訊查詢的自動補充邏輯
-            # 只要有地點資訊 (不管是 AI 辨識出的 address 或 important_location)，都嘗試去撈取詳細資訊
-            search_query = result.get("address") or result.get("important_location")
+            # 優先用店名（important_location）查詢，能帶出評分、營業時間等完整細節
+            # 若無店名才退而使用 address（純地址，只能抓到座標）
+            search_query = result.get("important_location") or result.get("address")
             
             if search_query:
                 locations = [
