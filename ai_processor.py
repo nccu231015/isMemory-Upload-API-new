@@ -154,7 +154,10 @@ class AIProcessor:
             ]
             for field in required_fields:
                 if field not in result:
-                    result[field] = ""
+                    if field in ["important_location", "address"]:
+                        result[field] = []
+                    else:
+                        result[field] = ""
 
             # 處理 Google Maps 詳細資訊查詢的自動補充邏輯
             # 優先用店名（important_location）查詢，能帶出評分、營業時間等完整細節
@@ -164,7 +167,7 @@ class AIProcessor:
             if search_query:
                 locations = [
                     loc.strip()
-                    for loc in search_query.split("/")
+                    for loc in search_query.replace("｜｜｜", "/").split("/")
                     if loc.strip()
                 ]
                 
@@ -182,12 +185,13 @@ class AIProcessor:
                         addresses.append(loc)
                         all_details.append({"address": loc})
 
-                # 更新地址欄位
-                result["address"] = " / ".join(addresses)
+                # 更新欄位為陣列格式 (即使只有一個也是 array)
+                result["important_location"] = locations
+                result["address"] = addresses
+                result["all_location_details"] = all_details
 
-
-                # 如果只有一個地點，將詳細資訊拉到頂層以便使用
-                if len(all_details) == 1:
+                # 將第一個地點的詳細資訊拉到頂層以便相容舊有的單一地點顯示邏輯
+                if all_details:
                     d = all_details[0]
                     result["rating"] = d.get("rating")
                     result["priceLevel"] = d.get("priceLevel")
@@ -196,9 +200,6 @@ class AIProcessor:
                     result["location"] = d.get("location")
                     result["websiteUri"] = d.get("websiteUri")
                     result["nationalPhoneNumber"] = d.get("nationalPhoneNumber")
-                else:
-                    # 點個地點時，可以選擇存儲列表或是僅存第一個，這裡選擇添加一個列表欄位
-                    result["all_location_details"] = all_details
 
             return result
 
@@ -233,8 +234,8 @@ class AIProcessor:
                 "summary": "JSON解析失敗",
                 "title": "標題生成失敗",
                 "important_time": "",
-                "important_location": "",
-                "address": "",
+                "important_location": [],
+                "address": [],
                 "original_path": original_path,
             }
         except Exception as e:
@@ -245,7 +246,7 @@ class AIProcessor:
                 "summary": "無法產生摘要",
                 "title": "無法產生標題",
                 "important_time": "",
-                "important_location": "",
-                "address": "",
+                "important_location": [],
+                "address": [],
                 "original_path": original_path,
             }
