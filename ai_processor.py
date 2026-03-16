@@ -42,7 +42,7 @@ class AIProcessor:
                         "regularOpeningHours": place.get("regularOpeningHours"),
                         "location": place.get("location"),
                         "websiteUri": place.get("websiteUri"),
-                        "nationalPhoneNumber": place.get("nationalPhoneNumber")
+                        "nationalPhoneNumber": place.get("nationalPhoneNumber"),
                     }
                 else:
                     print(f"⚠️ 找不到該地點的資訊: {location_name}")
@@ -157,11 +157,13 @@ class AIProcessor:
                     result[field] = ""
 
             # 處理 Google Maps 詳細資訊查詢的自動補充邏輯
-            # 當 important_location 有值，但 address 為空時，代表那是地點名稱
-            if result.get("important_location") and not result.get("address"):
+            # 只要有地點資訊 (不管是 AI 辨識出的 address 或 important_location)，都嘗試去撈取詳細資訊
+            search_query = result.get("address") or result.get("important_location")
+            
+            if search_query:
                 locations = [
                     loc.strip()
-                    for loc in result["important_location"].split("/")
+                    for loc in search_query.split("/")
                     if loc.strip()
                 ]
                 
@@ -175,12 +177,14 @@ class AIProcessor:
                         addresses.append(details["address"])
                         all_details.append(details)
                     else:
-                        # 找不到詳細資訊則保留原始地點名稱
+                        # 找不到詳細資訊則保留原始查詢字串
                         addresses.append(loc)
                         all_details.append({"address": loc})
 
+                # 更新地址欄位
                 result["address"] = " / ".join(addresses)
-                
+
+
                 # 如果只有一個地點，將詳細資訊拉到頂層以便使用
                 if len(all_details) == 1:
                     d = all_details[0]
