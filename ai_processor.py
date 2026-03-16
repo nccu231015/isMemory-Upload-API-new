@@ -10,34 +10,42 @@ class AIProcessor:
         self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
         self.google_maps_api_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
-    def _search_address_with_google_maps(self, location_name: str) -> str:
+    def _search_address_with_google_maps(self, location_name: str) -> Dict:
         """
-        透過 Google Maps Places API (New) 的 text search，將地點名稱轉換為地址。
+        透過 Google Maps Places API (New) 的 text search，將地點名稱轉換為詳細資訊。
         """
         if not self.google_maps_api_key or not location_name.strip():
-            return ""
+            return {}
 
         url = "https://places.googleapis.com/v1/places:searchText"
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": self.google_maps_api_key,
-            "X-Goog-FieldMask": "places.formattedAddress",
+            "X-Goog-FieldMask": "places.formattedAddress,places.rating,places.priceLevel,places.priceRange,places.regularOpeningHours,places.location,places.websiteUri,places.nationalPhoneNumber",
         }
         payload = {"textQuery": location_name, "languageCode": "zh-TW"}
 
         try:
-            print(f"正在透過 Google Maps API 查詢地點: {location_name}")
+            print(f"正在透過 Google Maps API 查詢地點詳細資訊: {location_name}")
             response = requests.post(url, headers=headers, json=payload, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 places = data.get("places", [])
                 if places:
-                    # 返回第一個匹配的地址
-                    address = places[0].get("formattedAddress", "")
-                    print(f"✅ 找到地址: {address}")
-                    return address
+                    place = places[0]
+                    # 返回第一個匹配的地點資訊
+                    return {
+                        "address": place.get("formattedAddress", ""),
+                        "rating": place.get("rating"),
+                        "priceLevel": place.get("priceLevel"),
+                        "priceRange": place.get("priceRange"),
+                        "regularOpeningHours": place.get("regularOpeningHours"),
+                        "location": place.get("location"),
+                        "websiteUri": place.get("websiteUri"),
+                        "nationalPhoneNumber": place.get("nationalPhoneNumber")
+                    }
                 else:
-                    print(f"⚠️ 找不到該地點的地址: {location_name}")
+                    print(f"⚠️ 找不到該地點的資訊: {location_name}")
             else:
                 print(
                     f"⚠️ Google Maps API 查詢失敗: {response.status_code} - {response.text}"
@@ -45,7 +53,7 @@ class AIProcessor:
         except Exception as e:
             print(f"⚠️ 查詢 Google Maps API 時發生錯誤: {e}")
 
-        return ""
+        return {}
 
     def process_video_text(self, input_data: Dict) -> Dict:
         """使用LLM處理文字資訊"""
@@ -148,7 +156,7 @@ class AIProcessor:
                 if field not in result:
                     result[field] = ""
 
-            # 處理 Google Maps 地址查詢的自動補充邏輯
+            # 處理 Google Maps 詳細資訊查詢的自動補充邏輯
             # 當 important_location 有值，但 address 為空時，代表那是地點名稱
             if result.get("important_location") and not result.get("address"):
                 locations = [
@@ -156,17 +164,36 @@ class AIProcessor:
                     for loc in result["important_location"].split("/")
                     if loc.strip()
                 ]
+                
                 addresses = []
+                all_details = []
+                
                 for loc in locations:
-                    addr = self._search_address_with_google_maps(loc)
-                    if addr:
-                        # 找到地址
-                        addresses.append(addr)
+                    details = self._search_address_with_google_maps(loc)
+                    if details and details.get("address"):
+                        # 找到詳細資訊
+                        addresses.append(details["address"])
+                        all_details.append(details)
                     else:
-                        # 找不到地址則保留原始地點名稱（或是你想留空也可以，此處保留原名稱）
+                        # 找不到詳細資訊則保留原始地點名稱
                         addresses.append(loc)
+                        all_details.append({"address": loc})
 
                 result["address"] = " / ".join(addresses)
+                
+                # 如果只有一個地點，將詳細資訊拉到頂層以便使用
+                if len(all_details) == 1:
+                    d = all_details[0]
+                    result["rating"] = d.get("rating")
+                    result["priceLevel"] = d.get("priceLevel")
+                    result["priceRange"] = d.get("priceRange")
+                    result["regularOpeningHours"] = d.get("regularOpeningHours")
+                    result["location"] = d.get("location")
+                    result["websiteUri"] = d.get("websiteUri")
+                    result["nationalPhoneNumber"] = d.get("nationalPhoneNumber")
+                else:
+                    # 點個地點時，可以選擇存儲列表或是僅存第一個，這裡選擇添加一個列表欄位
+                    result["all_location_details"] = all_details
 
             return result
 

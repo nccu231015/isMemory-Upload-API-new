@@ -53,7 +53,14 @@
     "summary": "AI 生成摘要",
     "important_time": "抽取的重要時間",
     "important_location": "抽取的重要地點",
-    "address": "解析出的絕對位置（若為空，則表示無法解析實體地址）",
+    "address": "解析出的絕對位置（若為空，則保留重要地點名稱）",
+    "rating": 4.5,
+    "priceLevel": "PRICE_LEVEL_MODERATE",
+    "priceRange": { "startPrice": { "currencyCode": "TWD", "units": "200" }, "endPrice": { "currencyCode": "TWD", "units": "600" } },
+    "regularOpeningHours": { "weekdayDescriptions": ["星期一: 09:00 – 21:00", "..."] },
+    "location": { "latitude": 25.033, "longitude": 121.564 },
+    "websiteUri": "https://example.com",
+    "nationalPhoneNumber": "02 1234 5678",
     "original_path": "原始 URL"
   },
   "db_storage": {
@@ -176,7 +183,7 @@ docker-compose up -d --build
 
 | 變數 | 必要 | 說明 |
 |---|---|---|
-| `OPENAI_API_KEY` | ✅ | OpenAI API 金鑰（Whisper + GPT-5-nano） |
+| `OPENAI_API_KEY` | ✅ | OpenAI API 金鑰（Whisper + GPT-4o） |
 | `GOOGLE_MAPS_API_KEY` | ✅ | Google Maps Places API 金鑰（用於地點轉換為地址） |
 | `ASTRA_DB_API_ENDPOINT` | ✅ | AstraDB 端點 |
 | `ASTRA_DB_TOKEN` | ✅ | AstraDB Token（優先） |
@@ -253,6 +260,14 @@ curl http://localhost:8080/api/health
 | `important_time` | AI 抽取的重要時間 |
 | `important_location` | AI 抽取的重要地點（地名） |
 | `address` | Google Maps API 解析出的絕對地址 |
+| `rating` | Google Maps 地點評分 |
+| `priceLevel` | Google Maps 價位等級（如 PRICE_LEVEL_MODERATE） |
+| `priceRange` | Google Maps 具體價位範圍 |
+| `regularOpeningHours` | Google Maps 營業時間與週摘要 |
+| `location` | Google Maps 經緯度座標（latitude/longitude） |
+| `websiteUri` | Google Maps 地點官方網站 |
+| `nationalPhoneNumber` | Google Maps 地點電話號碼 |
+| `all_location_details` | 多個地點時的詳細資訊列表 |
 | `original_path` | 原始 URL 或檔名 |
 | `upload_time` | 上傳時間（ISO 8601） |
 | `source_type` | 平台名稱（short_video / article 類型才有） |
@@ -263,8 +278,13 @@ curl http://localhost:8080/api/health
 
 ## 更新紀錄
 
+### v2.6.0
+- **Google Maps 資訊擴充**：`address` 查詢現在會一併獲取 `rating`、`priceLevel`、`priceRange`、`regularOpeningHours`、`location` (經緯度)、`websiteUri` 與 `nationalPhoneNumber`。
+- **語言規則強化**：AI 分析結果嚴格限定為 **繁體中文與英文**，若原始內容包含韓文、日文等其他語言，將自動翻譯為繁體中文。
+- **地址自動補充優化**：若有複數地點（使用 `/` 隔開），系統會分別查詢並儲存於 `all_location_details` 列表中。
+
 ### v2.5.0
-- AI 分析模型升級為 `gpt-5-nano`。
+- AI 分析模型調整與 `gpt-4o` 優化。
 - 新增 `address` 欄位：從 `important_location` 提取後呼叫 Google Maps Places API 轉為絕對地址，並存入 Astra DB。
 
 ### v2.4.0
