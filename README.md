@@ -61,6 +61,7 @@
     "location": { "latitude": 25.033, "longitude": 121.564 },
     "websiteUri": "https://example.com",
     "nationalPhoneNumber": "02 1234 5678",
+    "paymentOptions": { "acceptsCreditCards": true, "acceptsDebitCards": true, "acceptsCashOnly": false },
     "original_path": "原始 URL"
   },
   "db_storage": {
@@ -267,6 +268,7 @@ curl http://localhost:8080/api/health
 | `location` | Google Maps 經緯度座標（latitude/longitude） |
 | `websiteUri` | Google Maps 地點官方網站 |
 | `nationalPhoneNumber` | Google Maps 地點電話號碼 |
+| `paymentOptions` | Google Maps 支付方式 (信用卡/現金等) |
 | `all_location_details` | 多個地點時的詳細資訊列表 |
 | `original_path` | 原始 URL 或檔名 |
 | `upload_time` | 上傳時間（ISO 8601） |
@@ -277,6 +279,10 @@ curl http://localhost:8080/api/health
 ---
 
 ## 更新紀錄
+
+### v2.7.0
+- **地點資料格式統一**：`address` 與 `important_location` 欄位全面改為陣列（Array `[]`）格式，即使單一地點亦維持陣列結構。
+- **Google Maps 支付資訊**：新增 `paymentOptions` 欄位，可自動獲取該地點的支付方式支援狀況（如是否接受信用卡、行動支付或僅收現金）。
 
 ### v2.6.0
 - **Google Maps 資訊擴充**：`address` 查詢現在會一併獲取 `rating`、`priceLevel`、`priceRange`、`regularOpeningHours`、`location` (經緯度)、`websiteUri` 與 `nationalPhoneNumber`。
