@@ -21,7 +21,7 @@ class AIProcessor:
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": self.google_maps_api_key,
-            "X-Goog-FieldMask": "places.formattedAddress,places.rating,places.priceLevel,places.priceRange,places.regularOpeningHours,places.location,places.websiteUri,places.nationalPhoneNumber",
+            "X-Goog-FieldMask": "places.formattedAddress,places.rating,places.priceLevel,places.priceRange,places.regularOpeningHours,places.location,places.websiteUri,places.nationalPhoneNumber,places.paymentOptions",
         }
         payload = {"textQuery": location_name, "languageCode": "zh-TW"}
 
@@ -43,6 +43,7 @@ class AIProcessor:
                         "location": place.get("location"),
                         "websiteUri": place.get("websiteUri"),
                         "nationalPhoneNumber": place.get("nationalPhoneNumber"),
+                        "paymentOptions": place.get("paymentOptions"),
                     }
                 else:
                     print(f"⚠️ 找不到該地點的資訊: {location_name}")
@@ -200,6 +201,7 @@ class AIProcessor:
                     result["location"] = d.get("location")
                     result["websiteUri"] = d.get("websiteUri")
                     result["nationalPhoneNumber"] = d.get("nationalPhoneNumber")
+                    result["paymentOptions"] = d.get("paymentOptions")
 
             return result
 

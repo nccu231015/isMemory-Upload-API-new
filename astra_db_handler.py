@@ -146,6 +146,7 @@ class AstraDBHandler:
                         "location": analysis_result.get("location"),
                         "websiteUri": analysis_result.get("websiteUri"),
                         "nationalPhoneNumber": analysis_result.get("nationalPhoneNumber"),
+                        "paymentOptions": analysis_result.get("paymentOptions"),
                         "all_location_details": analysis_result.get("all_location_details"),
                         "original_path": analysis_result.get("original_path", ""),
                         "upload_time": datetime.now().isoformat(),
@@ -177,6 +178,7 @@ class AstraDBHandler:
                         "location": analysis_result.get("location"),
                         "websiteUri": analysis_result.get("websiteUri"),
                         "nationalPhoneNumber": analysis_result.get("nationalPhoneNumber"),
+                        "paymentOptions": analysis_result.get("paymentOptions"),
                         "all_location_details": analysis_result.get("all_location_details"),
                         "original_path": analysis_result.get("original_path", ""),
                         "source_type": source_type,  # "youtube", "tiktok", "instagram"
@@ -209,6 +211,7 @@ class AstraDBHandler:
                         "location": analysis_result.get("location"),
                         "websiteUri": analysis_result.get("websiteUri"),
                         "nationalPhoneNumber": analysis_result.get("nationalPhoneNumber"),
+                        "paymentOptions": analysis_result.get("paymentOptions"),
                         "all_location_details": analysis_result.get("all_location_details"),
                         "original_path": analysis_result.get("original_path", ""),
                         "source_type": source_type,  # threads/article
@@ -274,6 +277,7 @@ class AstraDBHandler:
                     "location": metadata.get("location"),
                     "websiteUri": metadata.get("websiteUri"),
                     "nationalPhoneNumber": metadata.get("nationalPhoneNumber"),
+                    "paymentOptions": metadata.get("paymentOptions"),
                     "all_location_details": metadata.get("all_location_details"),
                     "original_path": metadata.get("original_path"),
                     "upload_time": metadata.get("upload_time"),
