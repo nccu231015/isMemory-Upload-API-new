@@ -1,11 +1,30 @@
 import os
-import requests
-import subprocess
-from typing import Dict
-from openai import OpenAI
+import shutil
+import tempfile
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
-DOUYIN_WTF_BASE = "https://douyin.wtf"
+import yt_dlp
+
+# 音訊處理與轉錄流程與 YouTube 共用：
+# 轉成單聲道低位元率、超長時切段、並行送 Whisper。
+from youtube_module import audio_to_text, _find_downloaded_media
+
+# TikTok 需要 TLS 指紋偽裝才能通過網頁請求（由 curl_cffi 提供）。
+# 沒有安裝時 yt-dlp 會回報 "Unexpected response from webpage request"。
+_IMPERSONATE_AVAILABLE = None
+
+
+def _impersonation_available() -> bool:
+    global _IMPERSONATE_AVAILABLE
+    if _IMPERSONATE_AVAILABLE is None:
+        try:
+            import curl_cffi  # noqa: F401
+
+            _IMPERSONATE_AVAILABLE = True
+        except Exception:
+            _IMPERSONATE_AVAILABLE = False
+    return _IMPERSONATE_AVAILABLE
 
 
 def normalize_tiktok_url(input_url: str) -> str:
@@ -22,96 +41,99 @@ def normalize_tiktok_url(input_url: str) -> str:
         return input_url
 
 
-def fetch_video_data(url: str) -> dict:
-    """
-    使用 douyin.wtf Hybrid API 取得 TikTok 影片資料。
+def _build_ydl_opts(workdir: str) -> Dict:
+    opts: Dict = {
+        # TikTok 多數格式是含視訊的 mp4，抓不到純音訊時退回完整影片，
+        # 後續轉檔會自行去掉視訊軌。
+        "format": "bestaudio/best",
+        "outtmpl": os.path.join(workdir, "%(id)s.%(ext)s"),
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": False,
+        "noprogress": True,
+        "retries": 5,
+        "fragment_retries": 5,
+        "extractor_retries": 3,
+        "socket_timeout": 30,
+        "overwrites": True,
+    }
 
-    API: GET /api/hybrid/video_data?url={url}
-    文件: https://douyin.wtf/docs
-    """
-    endpoint = f"{DOUYIN_WTF_BASE}/api/hybrid/video_data"
-    response = requests.get(endpoint, params={"url": url}, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    proxy = os.getenv("YTDLP_PROXY")
+    if proxy:
+        opts["proxy"] = proxy
 
+    cookies = os.getenv("TIKTOK_COOKIES_FILE")
+    if cookies and os.path.exists(cookies):
+        opts["cookiefile"] = cookies
 
-def download_video(video_url: str, output_path: str) -> bool:
-    """下載影片到指定路徑"""
-    try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            )
-        }
-        resp = requests.get(video_url, headers=headers, stream=True, timeout=60)
-        resp.raise_for_status()
-        with open(output_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-        return True
-    except Exception as e:
-        print(f"下載影片失敗: {e}")
-        return False
+    return opts
 
 
-def whisper_transcribe(mp4_path: str) -> str:
-    """使用 OpenAI Whisper-1 將影片音頻轉為文字"""
-    try:
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-        # 將 mp4 轉為 m4a 音頻（降採樣以節省費用）
-        m4a_path = mp4_path.replace(".mp4", "_whisper.m4a")
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                mp4_path,
-                "-vn",
-                "-ac",
-                "1",
-                "-ar",
-                "16000",
-                "-b:a",
-                "32k",
-                m4a_path,
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        with open(m4a_path, "rb") as f:
-            result = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=f,
-                response_format="text",
-                temperature=0.0,
-            )
-
-        # 清理暫存音頻
-        if os.path.exists(m4a_path):
-            os.remove(m4a_path)
-
-        return result.strip()
-
-    except Exception as e:
-        print(f"Whisper 轉錄失敗: {e}")
+def _extract_native_subtitles(info: Dict) -> str:
+    """若 TikTok 本身就有字幕軌，優先使用（免去 Whisper 的時間與費用）"""
+    tracks = info.get("subtitles") or {}
+    if not tracks:
         return ""
+    # 優先中文，其次英文，最後任意一種
+    for preferred in ("zh-Hant", "zh-TW", "zh-Hans", "zh", "eng", "en"):
+        for lang in tracks:
+            if lang.lower().startswith(preferred.lower()):
+                return lang
+    return next(iter(tracks), "")
+
+
+def download_tiktok_audio(url: str, workdir: str) -> Tuple[Optional[str], Dict]:
+    """使用 yt-dlp 下載 TikTok 影片音訊
+
+    Returns:
+        tuple: (audio_path, info_dict)；失敗時 (None, {"error": ...})
+    """
+    try:
+        if not _impersonation_available():
+            print(
+                "⚠️ 未安裝 curl_cffi，TikTok 的網頁請求可能被拒絕"
+                "（requirements.txt 應包含 curl_cffi）"
+            )
+
+        opts = _build_ydl_opts(workdir)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            print(f"🎬 正在使用 yt-dlp 處理 TikTok 影片: {url}")
+            info = ydl.extract_info(url, download=False)
+
+            if info.get("_type") == "playlist":
+                entries = [e for e in (info.get("entries") or []) if e]
+                if not entries:
+                    raise Exception("連結沒有可下載的影片")
+                info = entries[0]
+
+            print(f"👤 作者: {info.get('uploader')}")
+            print(f"⏱️ 長度: {info.get('duration')}秒")
+
+            print("⬇️ 開始下載影片音訊...")
+            ydl.download([url])
+
+        audio_path = _find_downloaded_media(workdir)
+        if not audio_path or os.path.getsize(audio_path) == 0:
+            raise Exception("下載失敗，找不到可用的媒體檔案")
+
+        print(f"✅ 下載完成: {os.path.basename(audio_path)} "
+              f"({os.path.getsize(audio_path) / 1024 / 1024:.1f}MB)")
+        return audio_path, info
+
+    except Exception as exc:
+        message = f"TikTok 下載失敗: {exc}"
+        print(f"❌ {message}")
+        return None, {"error": message}
 
 
 async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Dict:
     """
-    處理 TikTok 影片：
-    1. 透過 douyin.wtf Hybrid API 取得影片資料
-    2. 下載影片
-    3. 使用 Whisper 轉錄音頻
+    處理 TikTok 影片（不依賴任何第三方 API）：
+    1. 用 yt-dlp 直接向 TikTok 取得影片資料與媒體
+    2. 用 Whisper 轉錄音訊（長影片會自動切段並行處理）
     """
     print(f"TikTok 模組接收到的 URL: '{url}'")
 
-    # 驗證 URL
     if not url or not url.strip() or not url.startswith(("http://", "https://")):
         return {
             "raw_output": {"description": "", "caption": ""},
@@ -122,149 +144,91 @@ async def process_tiktok_video(url: str, save_dir: str = "./shorts_cache") -> Di
             },
         }
 
-    # 標準化 URL
     cleaned_url = normalize_tiktok_url(url)
     if cleaned_url != url:
         print(f"標準化後的 URL: '{cleaned_url}'")
 
     os.makedirs(save_dir, exist_ok=True)
+    session_dir = tempfile.mkdtemp(prefix="tiktok_", dir=save_dir)
 
-    # Step 1: 呼叫 douyin.wtf Hybrid API 取得影片資料
     try:
-        print(f"正在呼叫 douyin.wtf API: {cleaned_url}")
-        data = fetch_video_data(cleaned_url)
-        print(f"API 回應 code: {data.get('code')}")
-    except Exception as e:
-        print(f"douyin.wtf API 請求失敗: {e}")
-        return {
-            "raw_output": {"description": "", "caption": ""},
-            "ai_input": {
-                "original_path": cleaned_url,
-                "ocr_text": "",
-                "caption": f"API 請求失敗: {str(e)}",
-            },
-        }
+        audio_path, info = download_tiktok_audio(cleaned_url, session_dir)
 
-    # 確認 API 回應成功
-    if data.get("code") != 200:
-        msg = data.get("data") or "未知錯誤"
-        print(f"API 回傳錯誤: {msg}")
-        return {
-            "raw_output": {"description": "", "caption": ""},
-            "ai_input": {
-                "original_path": cleaned_url,
-                "ocr_text": "",
-                "caption": f"API 錯誤: {msg}",
-            },
-        }
+        if audio_path is None:
+            error_text = info.get("error", "下載失敗")
+            return {
+                "raw_output": {
+                    "description": "",
+                    "caption": "(影片下載失敗)",
+                    "author": "",
+                    "aweme_id": "",
+                    "error": error_text,
+                },
+                "ai_input": {
+                    "original_path": cleaned_url,
+                    "ocr_text": "",
+                    "caption": f"(影片下載失敗) {error_text}",
+                },
+            }
 
-    # Step 2: 解析影片資料
-    video_info = data.get("data", {})
+        # TikTok 文案（短文 + hashtag），資訊密度高，作為 ocr_text
+        description = info.get("description") or info.get("title") or ""
+        author = info.get("uploader") or info.get("uploader_id") or "unknown"
+        aweme_id = info.get("id") or "unknown"
 
-    # 取得影片描述與作者
-    description = video_info.get("desc", "") or ""
-    author = (video_info.get("author") or {}).get("unique_id", "") or (
-        video_info.get("author") or {}
-    ).get("nickname", "unknown")
-    aweme_id = video_info.get("aweme_id", "") or video_info.get("id", "unknown")
+        print(f"影片描述: {description[:100]}")
 
-    print(f"影片描述: {description[:100]}")
-    print(f"作者: {author}")
+        print("🎙️ 開始語音轉文字...")
+        # 文案當作 Whisper 提示詞，改善店名／地名的轉寫正確率
+        caption = audio_to_text(audio_path, context=description[:400])
+        if not caption:
+            caption = "(轉錄失敗)"
+            print("⚠️ 語音轉文字失敗")
 
-    # 優先使用 TikTok 原生語音字幕
-    voice_to_text = video_info.get("voice_to_text", "") or ""
-    if voice_to_text:
-        print(f"✅ 取得 TikTok 原生字幕 (voice_to_text): {voice_to_text[:50]}...")
         return {
             "raw_output": {
                 "description": description,
-                "caption": voice_to_text,
+                "caption": caption,
                 "author": author,
                 "aweme_id": aweme_id,
+                "duration": info.get("duration", 0),
             },
             "ai_input": {
                 "original_path": cleaned_url,
-                "ocr_text": description,  # TikTok 文案（短文 + hashtag），屬於重點資訊
-                "caption": voice_to_text,
+                "ocr_text": description,
+                "caption": caption,
             },
         }
 
-    print("⚠️ 無 TikTok 原生字幕，改為下載影片並使用 Whisper 轉錄...")
+    except Exception as exc:
+        message = f"處理 TikTok 影片時發生錯誤: {exc}"
+        print(f"❌ {message}")
+        return {
+            "raw_output": {
+                "description": "",
+                "caption": "(處理失敗)",
+                "author": "",
+                "aweme_id": "",
+                "error": message,
+            },
+            "ai_input": {
+                "original_path": cleaned_url,
+                "ocr_text": "",
+                "caption": "(處理失敗)",
+            },
+        }
+    finally:
+        shutil.rmtree(session_dir, ignore_errors=True)
+        print("🗑️ 已清理暫存檔案")
 
-    # 取得無水印影片 URL
-    # douyin.wtf 回傳的結構：video.play_addr.url_list 或 video.download_addr.url_list
-    video_url = None
-    try:
-        video_data = video_info.get("video", {}) or {}
 
-        # 優先嘗試 play_addr（通常是無水印）
-        play_addr = video_data.get("play_addr") or {}
-        url_list = play_addr.get("url_list") or []
-        if url_list:
-            video_url = url_list[0]
+if __name__ == "__main__":
+    import asyncio
+    import sys
 
-        # 備選：download_addr
-        if not video_url:
-            download_addr = video_data.get("download_addr") or {}
-            url_list = download_addr.get("url_list") or []
-            if url_list:
-                video_url = url_list[0]
-
-        # 再備選：bit_rate 列表中的第一個
-        if not video_url:
-            bit_rate_list = video_data.get("bit_rate") or []
-            if bit_rate_list:
-                first_bitrate = bit_rate_list[0]
-                url_list = (first_bitrate.get("play_addr") or {}).get("url_list") or []
-                if url_list:
-                    video_url = url_list[0]
-    except Exception as e:
-        print(f"解析影片 URL 時發生錯誤: {e}")
-
-    print(f"影片下載 URL: {video_url[:80] if video_url else '未找到'}...")
-
-    # Step 3: 下載影片並進行 Whisper 轉錄
-    caption = ""
-    if video_url:
-        video_filename = f"{author}_{aweme_id}.mp4"
-        video_path = os.path.join(save_dir, video_filename)
-
-        print("正在下載影片...")
-        if download_video(video_url, video_path):
-            print(f"影片已下載至: {video_path}")
-            print("使用 Whisper-1 轉錄中...")
-            caption = whisper_transcribe(video_path)
-
-            # 清理影片檔案
-            try:
-                if os.path.exists(video_path):
-                    os.remove(video_path)
-                    print(f"已清理影片檔案: {video_path}")
-            except Exception as e:
-                print(f"清理影片失敗: {e}")
-
-            if not caption:
-                caption = "(轉錄失敗)"
-        else:
-            caption = "(影片下載失敗)"
-    else:
-        caption = "(無法取得影片下載連結)"
-
-    # 組合結果
-    raw_output = {
-        "description": description,
-        "caption": caption,
-        "author": author,
-        "aweme_id": aweme_id,
-    }
-
-    ai_input = {
-        "original_path": cleaned_url,
-        "ocr_text": description,  # TikTok 文案（短文 + hashtag），屬於重點資訊
-        "caption": caption,
-    }
-
-    return {
-        "raw_output": raw_output,
-        "ai_input": ai_input,
-    }
+    target = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else "https://www.tiktok.com/@bugatti/video/7339393672959757570"
+    )
+    print(asyncio.run(process_tiktok_video(target)))

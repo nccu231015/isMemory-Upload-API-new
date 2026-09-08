@@ -6,7 +6,7 @@ import io
 from typing import Optional
 from PIL import Image
 
-from youtube_module import process_youtube_video
+from youtube_module import process_youtube_video, is_valid_youtube_url
 from tiktok_module import process_tiktok_video
 from instagram_module import process_instagram_reel
 from image_module import process_image_upload
@@ -20,7 +20,7 @@ load_dotenv()
 
 app = FastAPI(
     title="短影音分析API",
-    description="智能處理YouTube Shorts、TikTok、Instagram Reels、Threads文章與Medium文章的內容分析，支援自動平台檢測",
+    description="智能處理YouTube 影片與 Shorts、TikTok、Instagram Reels、Threads文章與Medium文章的內容分析，支援自動平台檢測",
     version="2.2.0",
 )
 
@@ -53,14 +53,18 @@ def detect_video_platform(url: str) -> str:
     if not url or not url.strip():
         return "unknown"
 
-    url = url.strip().lower()
+    original_url = url.strip()
+    url = original_url.lower()
 
-    # YouTube Shorts 檢測
+    # YouTube 檢測（一般影片、Shorts、直播回放、嵌入連結皆支援）
     # 支援格式：
+    # - https://www.youtube.com/watch?v=xNSo6xoFsYc
     # - https://www.youtube.com/shorts/xNSo6xoFsYc
-    # - https://youtube.com/shorts/xNSo6xoFsYc
-    # - https://youtu.be/xNSo6xoFsYc (可能是shorts)
-    if ("youtube.com" in url and "/shorts/" in url) or "youtu.be" in url:
+    # - https://youtu.be/xNSo6xoFsYc
+    # - https://m.youtube.com/watch?v=xNSo6xoFsYc
+    # - https://www.youtube.com/live/xNSo6xoFsYc
+    # 交由 youtube_module 解析，確保與實際下載邏輯判斷一致
+    if is_valid_youtube_url(original_url):
         return "youtube"
 
     # TikTok 檢測
@@ -163,7 +167,7 @@ async def process_media(
         if detected_source == "unknown":
             raise HTTPException(
                 status_code=400,
-                detail="無法識別的連結格式，請確認連結是否為YouTube Shorts、TikTok、Instagram Reels、Threads 或 Medium",
+                detail="無法識別的連結格式，請確認連結是否為 YouTube（影片或 Shorts）、TikTok、Instagram Reels、Threads 或 Medium",
             )
 
         try:
@@ -230,11 +234,18 @@ async def health_check():
     # 檢查AstraDB連接
     db_status = "connected" if db_handler.initialize_connection() else "disconnected"
 
+    # 只回報「有沒有值」，不回報任何金鑰內容
+    def _has(name: str) -> bool:
+        return bool((os.getenv(name) or "").strip())
+
     return {
         "status": "healthy",
         "service": "shorts-analysis-api",
         "astra_db": db_status,
-        "has_openai_key": bool(os.getenv("OPENAI_API_KEY")),
+        "has_openai_key": _has("OPENAI_API_KEY"),
+        "has_google_maps_key": _has("GOOGLE_MAPS_API_KEY"),
+        "has_tavily_key": _has("TAVILY_API_KEY"),
+        "has_youtube_cookies": _has("YTDLP_COOKIES") or _has("YTDLP_COOKIES_CONTENT"),
     }
 
 

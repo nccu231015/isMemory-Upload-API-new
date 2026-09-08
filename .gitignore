@@ -67,3 +67,8 @@ logs/
 
 # Tor服務相關
 tor_service/
+
+# 本機匯出的 YouTube cookies（機密，絕不可進版控）
+cookies.txt
+*cookies*.txt
+.env

@@ -5,7 +5,19 @@ FROM mcr.microsoft.com/playwright/python:v1.58.0-jammy
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# 安裝 Deno 作為 yt-dlp 的 JavaScript runtime
+# yt-dlp 已將「沒有 JS runtime 的 YouTube 抽取」標記為 deprecated：
+# 缺少 runtime 會導致 signature / n-challenge 無法解出，抓不到可用的音訊格式。
+ENV DENO_INSTALL=/usr/local
+RUN curl -fsSL -o /tmp/deno.zip \
+        https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip \
+    && unzip -q /tmp/deno.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/deno \
+    && rm /tmp/deno.zip \
+    && deno --version
 
 # 設定工作目錄
 WORKDIR /app

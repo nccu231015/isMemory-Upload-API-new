@@ -11,6 +11,8 @@ Pillow>=9.0.0
 
 # 影片處理
 yt-dlp  # Latest version with OAuth2 support for YouTube authentication
+yt-dlp-ejs  # YouTube JS challenge solver scripts（搭配容器內的 deno 使用，缺少會導致部分格式抓不到）
+curl_cffi  # TLS 指紋偽裝；TikTok 的網頁請求沒有它會被拒絕
 
 # 資料庫
 astrapy>=0.5.0

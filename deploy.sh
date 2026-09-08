@@ -43,16 +43,42 @@ docker push $IMAGE_NAME
 
 # 5. 部署到Cloud Run
 echo "🚀 部署到 Cloud Run..."
-gcloud run deploy $SERVICE_NAME \
-    --image $IMAGE_NAME \
-    --region $REGION \
-    --platform managed \
-    --allow-unauthenticated \
-    --memory 4Gi \
-    --cpu 2 \
-    --timeout 3600 \
-    --max-instances 10 \
-    --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY,ASTRA_DB_APPLICATION_TOKEN=$ASTRA_DB_APPLICATION_TOKEN,ASTRA_DB_TOKEN=$ASTRA_DB_TOKEN,ASTRA_DB_API_ENDPOINT=$ASTRA_DB_API_ENDPOINT,CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME,CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY,CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET,X_API_KEY=$X_API_KEY,MS_TOKEN=$MS_TOKEN"
+
+# 只把「本機確實有值」的變數帶上去，並使用 --update-env-vars（合併）而非
+# --set-env-vars（取代）。
+# --set-env-vars 會刪除所有沒列出的變數，包含線上以 Secret Manager 掛載的
+# YTDLP_COOKIES 與 GOOGLE_MAPS_API_KEY、TAVILY_API_KEY、IG_* 等，
+# 沒有 .env 的機器上執行會直接清空線上設定。
+ENV_VARS=""
+for KEY in OPENAI_API_KEY ASTRA_DB_APPLICATION_TOKEN ASTRA_DB_TOKEN \
+           ASTRA_DB_API_ENDPOINT CLOUDINARY_CLOUD_NAME CLOUDINARY_API_KEY \
+           CLOUDINARY_API_SECRET X_API_KEY MS_TOKEN GOOGLE_MAPS_API_KEY \
+           TAVILY_API_KEY; do
+    VALUE="${!KEY}"
+    if [ -n "$VALUE" ]; then
+        ENV_VARS="${ENV_VARS:+$ENV_VARS,}$KEY=$VALUE"
+    fi
+done
+
+DEPLOY_ARGS=(
+    --image "$IMAGE_NAME"
+    --region "$REGION"
+    --platform managed
+    --allow-unauthenticated
+    --memory 4Gi
+    --cpu 2
+    --timeout 3600
+    --max-instances 10
+)
+
+if [ -n "$ENV_VARS" ]; then
+    echo "🔑 更新環境變數（僅本機有值的項目，其餘保留線上設定）"
+    DEPLOY_ARGS+=(--update-env-vars "$ENV_VARS")
+else
+    echo "🔑 本機沒有可用的環境變數，保留線上既有設定"
+fi
+
+gcloud run deploy $SERVICE_NAME "${DEPLOY_ARGS[@]}"
 
 # 6. 獲取服務URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)')

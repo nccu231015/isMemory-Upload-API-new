@@ -31,7 +31,7 @@
 
 | 平台 | 支援的 URL 格式 |
 |---|---|
-| **YouTube** | `youtube.com/shorts/...`、`youtu.be/...` |
+| **YouTube** | `youtube.com/watch?v=...`、`youtube.com/shorts/...`、`youtu.be/...`、`youtube.com/live/...`、`youtube.com/embed/...`（含 `m.` / `music.` 子網域） |
 | **TikTok** | `tiktok.com/@.../video/...`、`vm.tiktok.com/...` |
 | **Instagram** | `instagram.com/reel/...`、`instagram.com/reels/...` |
 | **Threads** | `threads.net/...`、`threads.com/...` |
@@ -62,6 +62,13 @@
     "websiteUri": "https://example.com",
     "nationalPhoneNumber": "02 1234 5678",
     "paymentOptions": { "acceptsCreditCards": true, "acceptsDebitCards": true, "acceptsCashOnly": false },
+    "products": ["三層肉", "雞皮餃子", "兔兔玩偶"],
+    "todos": ["需要事先線上預約"],
+    "tips": ["假日人多建議早點去"],
+    "all_location_details": [
+      { "address": "澀谷橫丁", "rating": 4.1, "products": ["三層肉", "雞皮餃子"] },
+      { "address": "唐吉訶德", "products": ["兔兔玩偶"] }
+    ],
     "original_path": "原始 URL"
   },
   "db_storage": {
@@ -102,12 +109,30 @@
 }
 ```
 
-### 🎬 YouTube Shorts
+### 🎬 YouTube（一般影片與 Shorts）
 
 | 欄位 | 內容 |
 |---|---|
-| `ocr_text` | 空字串（YouTube description 雜訊多，刻意排除） |
+| `ocr_text` | 影片標題（作者濃縮的核心文案；description 雜訊多，刻意排除） |
 | `caption` | Whisper 語音轉文字結果 |
+
+**地點與商品抽取**：長影片（內容超過 2000 字）會先把逐字稿切段平行掃描，
+每段只問「這段提到哪些具體場所、在那裡吃到買到什麼」，
+再把候選清單交給主要分析挑選。
+這樣可以避免單次呼叫在長內容上只回傳「東京」「澀谷」這類籠統地名。
+商品會綁在 `all_location_details` 中各自的地點底下。
+短影片內容集中，維持單次呼叫，不會產生額外費用。
+
+**長影片支援**：下載後會先用 ffmpeg 轉成單聲道 16kHz / 32kbps 音訊，
+超過 Whisper 單檔 25MB 上限時自動切段轉錄再合併，
+因此數小時的影片也能完整轉錄（處理時間會隨長度增加）。
+預設可接受的最長影片為 4 小時，可用 `YOUTUBE_MAX_DURATION_SECONDS` 調整。
+進行中的直播不支援。
+
+**抓取穩定性**：yt-dlp 需要 JavaScript runtime 才能解出 YouTube 的
+signature / n-challenge，Docker 映像中已安裝 **Deno**，
+並以 `yt-dlp-ejs` 套件提供 challenge solver。
+若預設抽取流程被擋下，會自動改用其他 innertube client 重試。
 
 ---
 
@@ -116,9 +141,10 @@
 | 欄位 | 內容 |
 |---|---|
 | `ocr_text` | TikTok 文案（`desc`，作者撰寫的短文 + hashtag） |
-| `caption` | **優先**：TikTok 原生語音字幕（`voice_to_text`）；若無則 Whisper 轉錄 |
+| `caption` | Whisper 語音轉文字結果（長影片自動切段並行轉錄） |
 
-> **說明**：透過 [douyin.wtf Hybrid API](https://douyin.wtf/docs) 取得影片資料，不需要 MS_TOKEN 或 Playwright。
+> **說明**：直接以 yt-dlp 向 TikTok 取得影片與中繼資料，不依賴任何第三方 API。
+> 需要 `curl_cffi` 提供 TLS 指紋偽裝，否則 TikTok 會拒絕網頁請求。
 
 ---
 
@@ -194,7 +220,15 @@ docker-compose up -d --build
 | `CLOUDINARY_API_KEY` | ✅（圖片） | Cloudinary 設定 |
 | `CLOUDINARY_API_SECRET` | ✅（圖片） | Cloudinary 設定 |
 | `X_API_KEY` | ✅（Instagram） | ScrapeCreators API 金鑰 |
-| `MS_TOKEN` | — | 已棄用（TikTok 改用 douyin.wtf） |
+| `MS_TOKEN` | — | 已棄用（TikTok 改用 yt-dlp 直接抓取） |
+| `TIKTOK_COOKIES_FILE` | 否（TikTok） | TikTok cookies 檔案路徑，僅在被要求驗證時需要 |
+| `YTDLP_IMPERSONATE` | 否 | 強制指定 TLS 指紋偽裝目標，例如 `chrome` |
+| `WHISPER_PARALLEL_WORKERS` | 否 | 長音檔並行轉錄的執行緒數，預設 `4` |
+| `YTDLP_COOKIES_CONTENT` | 否（YouTube） | YouTube cookies（Netscape 格式全文或 base64）。部署在資料中心 IP 時，YouTube 可能要求「確認你不是機器人」，帶 cookies 是最有效的解法 |
+| `YTDLP_COOKIES_FILE` | 否（YouTube） | cookies 檔案路徑，優先於 `YTDLP_COOKIES_CONTENT` |
+| `YTDLP_PROXY` | 否（YouTube） | yt-dlp 代理，例如 `http://user:pass@host:port` |
+| `YTDLP_YOUTUBE_CLIENTS` | 否 | 覆寫 fallback 的 innertube client 順序，逗號分隔 |
+| `YOUTUBE_MAX_DURATION_SECONDS` | 否 | 可處理的最長影片秒數，預設 `14400`（4 小時） |
 | `TAVILY_API_KEY` | ✅（Medium） | Tavily Extract API 金鑰 |
 | `PORT` | 否 | 預設 `8080` |
 
@@ -206,6 +240,12 @@ docker-compose up -d --build
 # YouTube Shorts
 curl -X POST http://localhost:8080/api/process \
   -F "url=https://www.youtube.com/shorts/xNSo6xoFsYc" \
+  -F "user_id=user_001" \
+  -F "store_in_db=false"
+
+# YouTube 一般影片
+curl -X POST http://localhost:8080/api/process \
+  -F "url=https://www.youtube.com/watch?v=dQw4w9WgXcQ" \
   -F "user_id=user_001" \
   -F "store_in_db=false"
 
