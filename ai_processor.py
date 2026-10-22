@@ -188,13 +188,18 @@ class AIProcessor:
         content_length = len(ocr_text or "") + len(caption or "")
         is_long_form = content_length > 2000
         summary_limit = 120 if is_long_form else 50
-        max_locations = 10 if is_long_form else 5
+        # 短貼文也常在說明欄列出一整串景點（例如「分享10個私房景點」），
+        # 上限太低會只留下最前面的住宿或交通，真正推薦的景點反而被截掉。
+        max_locations = 15
 
         # 長影片先做一次「逐段候選抽取」，把具體店名撈出來再交給主要分析。
         # 短影片內容集中，單次呼叫就夠準，不需要多花這些錢。
         scan = {"places": [], "products_by_place": {}, "loose_products": []}
         if is_long_form:
-            scan = self._extract_place_candidates(caption)
+            # 說明欄也要掃，否則說明欄列出的店名不在候選清單裡，會被主要分析排除
+            scan = self._extract_place_candidates(
+                "\n".join(part for part in (ocr_text, caption) if part)
+            )
         place_candidates = scan["places"]
 
         # 準備系統提示詞
@@ -210,10 +215,13 @@ class AIProcessor:
    - 不要只回傳國家、都道府縣、城市或行政區這類大範圍地名（例如：日本、東京、澀谷、六本木）。
      只有在整段內容完全沒有提到任何具體場所時，才退而使用大範圍地名。
    - 交通節點（機場、車站、公車站）只是移動過程時一律不要列入。
+   - 航空公司、租車行、交通業者、贊助品牌本身不是要去的地點，不要列入。
    - 行政區、商圈名稱（例如：澀谷、原宿、六本木、信義區）本身不要單獨列入；
      若該區域內有提到具體店家或設施，請列出那個具體名稱而不是區域名。
    - 依照內容中出現的順序列出，不要重複，最多 {max_locations} 個，用「/」隔開。
-   - 說明欄或時間軸章節裡列出的店名同樣要納入。
+   - 說明欄或時間軸章節裡列出的店名同樣要納入；
+     說明欄若以清單列出景點（例如「▶︎」「📍」「1.」開頭，或「分享10個景點」），清單中每一項都必須列入，不可只取前幾個。
+   - 超過上限時，優先保留內容主要推薦或實際造訪的景點、店家，其次才是住宿。
    - 若逐字稿中的店名疑似音譯錯字，請以最合理的正確寫法輸出。
    - 如果有提供「候選地點清單」，請以該清單為主要依據挑選，不要自行發明清單外的地點；
      但可以修正清單中明顯的同音錯字。
@@ -224,9 +232,12 @@ class AIProcessor:
    - 最多 15 個。沒有就回傳空陣列。
 8. todos：影片中提到「事前要做的事」，例如需要預約、換錢、買票、辦網卡、線上登錄。沒有就回傳空陣列。
 9. tips：影片中提到的注意事項或行前須知，例如穿著建議、禁止事項、排隊技巧、營業時間陷阱。沒有就回傳空陣列。
-10. address：請判斷提取出來的 `important_location` 是否本身就是一個「完整的詳細地址」（例如：台北市信義區市府路45號）。
-   - 如果是完整地址，請將該相同內容填入此欄位。
-   - 如果不是完整地址（只是地點名稱，例如：台北101、台中洲際棒球場）或者沒有提取出任何地點，請填入「空字串」。
+10. address：`important_location` 中每個地點在內容裡「明確寫出的地址」（例如說明欄的「📍店名 台北市松山區三民路146號」）。
+   - 依照 important_location 的順序，用「/」隔開，數量要與 important_location 一致；某個地點沒有寫出地址就留空（例如「台北市松山區三民路146號 / 」）。
+   - 只能照抄內容中出現的地址，不要自行推測或編造。
+   - 若 important_location 本身就是完整地址，填入相同內容。
+   - 整段內容都沒有寫出任何地址，回傳空字串。
+11. region：內容主要所在的城市或地區（例如：金門、東京、台南），用來輔助地圖查詢同名店家；判斷不出來就回傳空字串。
 
 摘要應該：
 - 結合文字內容和字幕的重點資訊
@@ -251,7 +262,8 @@ class AIProcessor:
     "title": "吸引人的標題，例如：星巴克咖啡店工作日常",
     "important_time": "例如：週一至週五 09:00-18:00，如果沒有則回傳空字串",
     "important_location": "例如：台北101 / 象山步道，如果沒有則回傳空字串",
-    "address": "如果 important_location 就是完整地址則填入；若只是名稱則回傳空字串",
+    "address": "例如：台北市信義區信義路五段7號 / ，內容中沒寫出地址則回傳空字串",
+    "region": "例如：台北",
     "products": ["三層肉", "雞皮餃子"],
     "todos": ["需要事先線上預約"],
     "tips": ["假日人多建議早點去"],
@@ -271,14 +283,12 @@ class AIProcessor:
             def clean_text(text):
                 if not text:
                     return ""
-                # 移除特殊字符和控制字符
-                text = re.sub(
-                    r"[^\w\s\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff.,!?()【】「」：；。，！？（）]",
-                    " ",
-                    text,
-                )
-                # 移除多餘空格
-                text = re.sub(r"\s+", " ", text)
+                # 只移除控制字元；保留換行與「▶︎」「📍」等符號，
+                # 說明欄的景點清單靠這些結構才看得出是一項一項的地點。
+                text = re.sub(r"[\x00-\x09\x0b-\x1f\x7f\u200b-\u200f\ufeff]", " ", text)
+                text = re.sub(r"[ \t\u3000]+", " ", text)
+                text = re.sub(r" *\n *", "\n", text)
+                text = re.sub(r"\n{3,}", "\n\n", text)
                 return text.strip()
 
             # 限制長度避免超出token限制。
@@ -340,6 +350,7 @@ class AIProcessor:
                 "important_time",
                 "important_location",
                 "address",
+                "region",
                 "products",
                 "todos",
                 "tips",
@@ -372,28 +383,55 @@ class AIProcessor:
             # 處理 Google Maps 詳細資訊查詢的自動補充邏輯
             # 優先用店名（important_location）查詢，能帶出評分、營業時間等完整細節
             # 若無店名才退而使用 address（純地址，只能抓到座標）
-            search_query = result.get("important_location") or result.get("address")
-            
-            if search_query:
-                locations = [
-                    loc.strip()
-                    for loc in search_query.replace("｜｜｜", "/").split("/")
-                    if loc.strip()
+            def split_field(value, keep_empty=False) -> list:
+                # 模型偶爾會回傳陣列而不是「/」分隔字串，兩種都要接受
+                if isinstance(value, list):
+                    value = "/".join(str(v) for v in value)
+                parts = [
+                    part.strip()
+                    for part in str(value or "").replace("｜｜｜", "/").split("/")
                 ]
-                
+                return parts if keep_empty else [p for p in parts if p]
+
+            locations = split_field(result.get("important_location"))
+            text_addresses = split_field(result.get("address"), keep_empty=True)
+            if not locations:
+                locations = [a for a in text_addresses if a]
+                text_addresses = list(locations)
+
+            region = str(result.get("region") or "").strip()
+
+            # 說明欄寫出的地址要跟地點一一對應；數量對不上時只信任單一地點的情況
+            if len(text_addresses) != len(locations):
+                found = [a for a in text_addresses if a]
+                text_addresses = (
+                    found[:1] if len(locations) == 1 else []
+                ) + [""] * len(locations)
+            text_addresses = text_addresses[: len(locations)]
+
+            if locations:
                 addresses = []
                 all_details = []
-                
-                for loc in locations:
-                    details = self._search_address_with_google_maps(loc)
+
+                for loc, text_address in zip(locations, text_addresses):
+                    # 店名加上說明欄的地址一起查，避免同名分店或撞名查到別處
+                    query = loc
+                    if text_address and text_address not in loc:
+                        query = f"{loc} {text_address}"
+                    elif region and region not in loc:
+                        # 「時苑」「耐心有限公司」這類名稱太通用，不加地區會查到別的縣市
+                        query = f"{loc} {region}"
+                    details = self._search_address_with_google_maps(query)
                     if details and details.get("address"):
                         # 找到詳細資訊
                         addresses.append(details["address"])
                         all_details.append(details)
                     else:
-                        # 找不到詳細資訊則保留原始查詢字串
-                        addresses.append(loc)
-                        all_details.append({"address": loc})
+                        # 查不到（或沒有 Maps 金鑰）時，優先保留內容中寫出的地址，
+                        # 沒有才退回地點名稱
+                        fallback = text_address or loc
+                        addresses.append(fallback)
+                        all_details.append({"address": fallback})
 
                 # 把逐段掃描到的商品掛回各自的地點，
                 # 讓前端能在每個景點卡片上顯示「這裡吃了/買了什麼」

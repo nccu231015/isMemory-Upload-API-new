@@ -20,7 +20,7 @@ load_dotenv()
 
 app = FastAPI(
     title="短影音分析API",
-    description="智能處理YouTube 影片與 Shorts、TikTok、Instagram Reels、Threads文章與Medium文章的內容分析，支援自動平台檢測",
+    description="智能處理YouTube 影片與 Shorts、TikTok、Instagram Reels 與貼文（含輪播）、Threads文章與Medium文章的內容分析，支援自動平台檢測",
     version="2.2.0",
 )
 
@@ -76,13 +76,17 @@ def detect_video_platform(url: str) -> str:
         if "/video/" in url or "@" in url or "vm.tiktok.com" in url:
             return "tiktok"
 
-    # Instagram Reels 檢測
+    # Instagram 檢測（Reels、貼文、輪播貼文、IGTV）
     # 支援格式：
     # - https://www.instagram.com/reel/DOw9J9kEtY7/
     # - https://www.instagram.com/reels/DNxk7Qj5qnq/
     # - https://instagram.com/reel/DOw9J9kEtY7/
-    # - https://instagram.com/reels/DNxk7Qj5qnq/
-    if "instagram.com" in url and ("/reels/" in url or "/reel/" in url):
+    # - https://instagram.com/p/DdDzPvYm-tN/            （單圖／輪播貼文）
+    # - https://www.instagram.com/p/DdDzPvYm-tN/?stkn=  （帶分享參數）
+    # - https://www.instagram.com/tv/DOw9J9kEtY7/
+    if "instagram.com" in url and (
+        "/reels/" in url or "/reel/" in url or "/p/" in url or "/tv/" in url
+    ):
         return "instagram"
 
     # Threads 檢測（文章）
@@ -167,7 +171,7 @@ async def process_media(
         if detected_source == "unknown":
             raise HTTPException(
                 status_code=400,
-                detail="無法識別的連結格式，請確認連結是否為 YouTube（影片或 Shorts）、TikTok、Instagram Reels、Threads 或 Medium",
+                detail="無法識別的連結格式，請確認連結是否為 YouTube（影片或 Shorts）、TikTok、Instagram（Reels 或貼文）、Threads 或 Medium",
             )
 
         try:

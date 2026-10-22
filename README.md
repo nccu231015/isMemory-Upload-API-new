@@ -33,7 +33,7 @@
 |---|---|
 | **YouTube** | `youtube.com/watch?v=...`、`youtube.com/shorts/...`、`youtu.be/...`、`youtube.com/live/...`、`youtube.com/embed/...`（含 `m.` / `music.` 子網域） |
 | **TikTok** | `tiktok.com/@.../video/...`、`vm.tiktok.com/...` |
-| **Instagram** | `instagram.com/reel/...`、`instagram.com/reels/...` |
+| **Instagram** | `instagram.com/reel/...`、`instagram.com/reels/...`、`instagram.com/p/...`（單圖／輪播貼文）、`instagram.com/tv/...`；分享連結的 `?stkn=`、`?igsh=` 等參數會自動移除 |
 | **Threads** | `threads.net/...`、`threads.com/...` |
 | **Medium** | `medium.com/...`、`*.medium.com/...` |
 
@@ -52,7 +52,8 @@
     "title": "AI 生成標題",
     "summary": "AI 生成摘要",
     "important_time": "抽取的重要時間",
-    "important_location": "抽取的重要地點",
+    "important_location": ["抽取的重要地點（最多 15 個）"],
+    "region": "內容主要所在的城市或地區，用於輔助地圖查詢",
     "address": "解析出的絕對位置（若為空，則保留重要地點名稱）",
     "rating": 4.5,
     "priceLevel": "PRICE_LEVEL_MODERATE",
@@ -148,14 +149,25 @@ signature / n-challenge，Docker 映像中已安裝 **Deno**，
 
 ---
 
-### 📸 Instagram Reels
+### 📸 Instagram Reels 與貼文（含輪播）
 
 | 欄位 | 內容 |
 |---|---|
 | `ocr_text` | Instagram 貼文說明文字 |
-| `caption` | Whisper 語音轉錄；若無音頻則使用貼文說明 |
+| `caption` | 各媒體內容彙整：影片以 Whisper 語音轉錄，圖片以 GPT-4o 做 OCR 與描述；皆無結果時退回貼文說明 |
 
-> **說明**：透過 [ScrapeCreators API](https://api.scrapecreators.com) 取得影片資料，需設定 `X_API_KEY`。
+`raw_output` 另含 `media_items`、`video_count`、`image_count`、`processed_video_count`、`processed_image_count`、`transcription`、`video_analyses`、`image_analyses`，方便追查每一則媒體的處理結果。
+
+> **說明**：自行抓取 Instagram 貼文，不依賴第三方爬蟲服務。依序嘗試：① 公開嵌入頁（免登入，支援 Reels、單圖、輪播）② 站內 API（需設定 `IG_SESSIONID`，可取得關閉嵌入或需登入的貼文）③ yt-dlp（僅影片）。全部失敗時回傳錯誤，不會把錯誤訊息當成內容做摘要。
+>
+> **輪播貼文**：媒體位於 `edge_sidecar_to_children`，支援影片與圖片混合（例如第一則是影片、其餘是圖片）。
+> 影片與圖片以非同步並行處理，數量上限見 `IG_MAX_VIDEOS`（預設 3）與 `IG_MAX_IMAGES`（預設 20，即 Instagram 輪播上限）。
+>
+> **無聲影片**：Instagram 輪播中的影片常常沒有音訊軌，`video_url` 只給純視訊軌。
+> 系統會先用 `ffprobe` 檢查音訊軌，沒有聲音就略過 Whisper，改抽一張畫面（失敗時退回封面圖）交給 GPT-4o 做 OCR 與描述，
+> 在 `caption` 中以 `【影片畫面】` 標示，避免這則媒體完全沒有內容。
+>
+> 圖片與影片畫面分析需要 `OPENAI_API_KEY`。
 
 ---
 
@@ -219,7 +231,9 @@ docker-compose up -d --build
 | `CLOUDINARY_CLOUD_NAME` | ✅（圖片） | Cloudinary 設定 |
 | `CLOUDINARY_API_KEY` | ✅（圖片） | Cloudinary 設定 |
 | `CLOUDINARY_API_SECRET` | ✅（圖片） | Cloudinary 設定 |
-| `X_API_KEY` | ✅（Instagram） | ScrapeCreators API 金鑰 |
+| `IG_MAX_VIDEOS` | 否 | Instagram 輪播單篇最多處理的影片數，預設 `3` |
+| `IG_MAX_IMAGES` | 否 | Instagram 輪播單篇最多處理的圖片數，預設 `20` |
+| `IG_SESSIONID` | 否 | Instagram 已登入帳號的 `sessionid` cookie，嵌入頁拿不到貼文時使用；多個帳號以逗號分隔，失效時自動換下一個。建議使用專用帳號，約一年或登出／改密碼後需更新 |
 | `MS_TOKEN` | — | 已棄用（TikTok 改用 yt-dlp 直接抓取） |
 | `TIKTOK_COOKIES_FILE` | 否（TikTok） | TikTok cookies 檔案路徑，僅在被要求驗證時需要 |
 | `YTDLP_IMPERSONATE` | 否 | 強制指定 TLS 指紋偽裝目標，例如 `chrome` |
@@ -257,6 +271,11 @@ curl -X POST http://localhost:8080/api/process \
 # Instagram Reels
 curl -X POST http://localhost:8080/api/process \
   -F "url=https://www.instagram.com/reel/ABC123/" \
+  -F "store_in_db=false"
+
+# Instagram 輪播貼文（影片＋圖片混合，可直接貼分享連結）
+curl -X POST http://localhost:8080/api/process \
+  -F "url=https://www.instagram.com/p/ABC123/?stkn=xxxx" \
   -F "store_in_db=false"
 
 # Threads
@@ -319,6 +338,23 @@ curl http://localhost:8080/api/health
 ---
 
 ## 更新紀錄
+
+### v2.9.0
+- 修正 Instagram Reels 嵌入頁只給封面、不給影片網址時，影片語音完全不會被轉錄的問題：改用站內 API / yt-dlp 補上影片網址，並保留嵌入頁的文案與輪播結構
+- 地點上限由短內容 5 個／長內容 10 個統一提高為 15 個；說明欄以清單列出的景點（`▶︎`、`📍`、編號）必須全部列入，超過上限時優先保留推薦景點，其次才是住宿
+- 不再列入航空公司、租車行、交通業者等非目的地
+- 送給模型的文字保留換行與清單符號（先前會被清成單行並移除 `📍` 等符號，清單結構消失）
+- 長內容逐段掃描候選地點時一併掃描貼文說明欄，避免說明欄列出的店名被排除
+- 新增 `region` 欄位：店名太通用時（例如「時苑」）以地區輔助 Google Maps 查詢，避免查到其他縣市的同名地點（地圖查詢由前端處理，前端查詢時請將 `region` 附加在地點名稱後）
+
+### v2.8.0
+- 修正 Instagram `/p/` 貼文連結無法辨識的問題（先前僅支援 `/reel/`、`/reels/`，`/p/` 會回傳 400）
+- 新增 `/tv/` 支援，並自動移除分享連結參數（`?stkn=`、`?igsh=`、`?img_index=`）
+- 支援輪播貼文（`edge_sidecar_to_children`）：影片以 Whisper 轉錄、圖片以 GPT-4o 做 OCR 與描述，並行處理後彙整
+- 修正無聲影片會讓轉錄整個失敗的問題：先以 `ffprobe` 檢查音訊軌，無聲時改抽畫面做 OCR／描述
+- ffmpeg 轉檔失敗時保留 stderr 訊息，不再只回報 exit status
+- 圖片處理上限由 10 提高到 20（Instagram 輪播上限），可用 `IG_MAX_VIDEOS` / `IG_MAX_IMAGES` 調整
+- `raw_output` 新增 `media_items`、`video_count`、`image_count`、`processed_*_count`、`transcription`、`video_analyses`、`image_analyses`
 
 ### v2.7.0
 - **地點資料格式統一**：`address` 與 `important_location` 欄位全面改為陣列（Array `[]`）格式，即使單一地點亦維持陣列結構。
